@@ -29,17 +29,22 @@ def complete(
     *,
     model: Optional[str] = None,
     max_tokens: int = 2000,
-    temperature: float = 0.3,
+    temperature: Optional[float] = None,
 ) -> str:
-    """単発の補完。返答テキストを返す。"""
+    """単発の補完。返答テキストを返す。
+
+    Opus 4.7 以降は temperature が非対応。デフォルトで送らない。
+    """
     client = get_client()
-    msg = client.messages.create(
+    kwargs = dict(
         model=model or DEFAULT_MODEL,
         max_tokens=max_tokens,
-        temperature=temperature,
         system=system,
         messages=[{"role": "user", "content": user}],
     )
+    if temperature is not None:
+        kwargs["temperature"] = temperature
+    msg = client.messages.create(**kwargs)
     parts = []
     for block in msg.content:
         if getattr(block, "type", None) == "text":

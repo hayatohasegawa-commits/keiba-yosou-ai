@@ -19,6 +19,8 @@ data/features/*.csv
 
 models/*.pkl
 models/*.txt
+!models/lgbm_latest.pkl
+!models/lgbm_v_*.pkl
 
 logs/*.log
 

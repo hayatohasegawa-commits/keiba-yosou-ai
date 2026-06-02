@@ -16,7 +16,7 @@ import os
 import sqlite3
 import sys
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -246,24 +246,37 @@ def simple_top3_probabilities(entries: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_simple_trifecta(ranked: pd.DataFrame) -> dict:
-    top = ranked.head(6).reset_index(drop=True)
-    if len(top) < 3:
-        return {"trifecta_1": "", "trifecta_2": "", "trifecta_3": "",
-                "rationale": "出走馬不足", "confidence": 0.0}
+    """5点 1着固定流し型をフォールバック生成。"""
+    top = ranked.head(5).reset_index(drop=True)
+    if len(top) < 4:
+        return {"picks": [], "rationale": "出走馬不足", "confidence": 0.0}
 
     nums = top["horse_number"].astype(int).tolist() if "horse_number" in top.columns else list(range(1, len(top)+1))
-    n = nums + [0]*6
+    n = nums + [0]*5
     return {
-        "trifecta_1": f"{n[0]}-{n[1]}-{n[2]}",
-        "trifecta_2": f"{n[0]}-{n[2]}-{n[3]}",
-        "trifecta_3": f"{n[1]}-{n[0]}-{n[4]}",
+        "picks": [
+            f"{n[0]}-{n[1]}-{n[2]}",
+            f"{n[0]}-{n[2]}-{n[1]}",
+            f"{n[0]}-{n[1]}-{n[3]}",
+            f"{n[0]}-{n[3]}-{n[1]}",
+            f"{n[0]}-{n[2]}-{n[3]}",
+        ],
         "rationale": (
-            "学習前の暫定モデル (人気・オッズ反比例)。"
-            "本命型: 上位3頭、連動型: 軸1着→3着→4着、穴狙い: 2-1-5の順。"
-            "LightGBM学習後により高精度になる予定。"
+            "暫定モデル: 確率上位5頭で1着固定流し型5点。"
+            "1着 = 最高確率馬、2-3着は2-5位の組合せ。"
+            "バックテストで12.7% (3点版より優位)。"
         ),
-        "confidence": 0.35,
+        "confidence": 0.40,
     }
+
+
+def try_lgbm_predict(race_id: str) -> pd.DataFrame | None:
+    """LightGBMモデルで予測 (失敗時は None)。"""
+    try:
+        from src.model.predict import predict_top3_probabilities
+        return predict_top3_probabilities(race_id)
+    except Exception:
+        return None
 
 
 # ---------- Claude推論（API key 設定時のみ） ----------
@@ -277,6 +290,18 @@ def try_claude_trifecta(race_meta: dict, ranked: pd.DataFrame):
     except Exception as e:  # noqa: BLE001
         st.warning(f"Claude推論に失敗: {e}")
         return None
+
+
+def merge_lgbm_probs(entries_df: pd.DataFrame, race_id: str) -> tuple[pd.DataFrame, str]:
+    """エントリーDFにLightGBMのp_top3を結合。失敗時はフォールバック確率で。"""
+    lgbm_df = try_lgbm_predict(race_id)
+    if lgbm_df is not None and not lgbm_df.empty and "p_top3" in lgbm_df.columns:
+        merged = entries_df.merge(
+            lgbm_df[["horse_id", "p_top3"]], on="horse_id", how="left"
+        )
+        if merged["p_top3"].notna().any():
+            return merged.sort_values("p_top3", ascending=False), "LightGBM"
+    return simple_top3_probabilities(entries_df), "人気・オッズベース"
 
 
 # ---------- UI ----------
@@ -312,17 +337,79 @@ with tab_predict:
         st.write("")
         go = st.button("予測実行", type="primary", use_container_width=True)
 
-    with st.expander("プリセット (DBから選ぶ)"):
+    with st.expander("🔍 プリセット検索 (DBから選ぶ)", expanded=False):
         races = db_races_df()
-        if not races.empty:
-            options = [
-                f"{r.date} {r.race_name} ({r.race_id})"
-                for r in races.itertuples()
-            ]
-            picked = st.selectbox("DB内のレースから選択", ["(選択しない)"] + options)
-            if picked != "(選択しない)":
-                race_id_input = picked.split("(")[-1].rstrip(")")
-                st.info(f"選択: {race_id_input}")
+        if races.empty:
+            st.info("DBにレースがありません。予測タブで取得すると蓄積されます。")
+        else:
+            races = races.copy()
+            races["date_dt"] = pd.to_datetime(races["date"], errors="coerce")
+            min_date = races["date_dt"].min().date()
+            max_date = races["date_dt"].max().date()
+
+            f1, f2 = st.columns([2, 3])
+            with f1:
+                default_from = max(min_date, max_date - timedelta(days=60))
+                date_range = st.date_input(
+                    "期間",
+                    value=(default_from, max_date),
+                    min_value=min_date,
+                    max_value=max_date,
+                    key="preset_date",
+                )
+            with f2:
+                keyword = st.text_input(
+                    "🔎 検索 (レース名 / race_id)",
+                    placeholder="例: 安田記念 / 202605030211",
+                    key="preset_kw",
+                )
+
+            f3, f4 = st.columns(2)
+            with f3:
+                available_courses = sorted(races["course"].dropna().unique().tolist())
+                courses_pick = st.multiselect("競馬場", available_courses, key="preset_course")
+            with f4:
+                available_grades = sorted([g for g in races["grade"].dropna().unique() if g])
+                grades_pick = st.multiselect("グレード", available_grades, key="preset_grade")
+
+            filtered = races.copy()
+            if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
+                d_from, d_to = date_range
+                filtered = filtered[
+                    (filtered["date_dt"] >= pd.Timestamp(d_from))
+                    & (filtered["date_dt"] <= pd.Timestamp(d_to))
+                ]
+            if courses_pick:
+                filtered = filtered[filtered["course"].isin(courses_pick)]
+            if grades_pick:
+                filtered = filtered[filtered["grade"].isin(grades_pick)]
+            if keyword:
+                kw = keyword.strip()
+                filtered = filtered[
+                    filtered["race_name"].fillna("").str.contains(kw, case=False, na=False)
+                    | filtered["race_id"].astype(str).str.contains(kw, na=False)
+                ]
+
+            filtered = filtered.sort_values("date_dt", ascending=False)
+            st.caption(f"🎯 ヒット {len(filtered)} 件 / DB全 {len(races)} 件")
+
+            if len(filtered) == 0:
+                st.info("該当レースなし。条件を緩めてください")
+            else:
+                MAX_OPTIONS = 300
+                display = filtered.head(MAX_OPTIONS)
+                truncated = len(filtered) > MAX_OPTIONS
+                opts = ["(選択しない)"] + [
+                    f"{r.date} {r.race_name} ({r.race_id})" for r in display.itertuples()
+                ]
+                picked = st.selectbox(
+                    f"レース選択（直近{len(display)}件{'・以下省略' if truncated else ''}）",
+                    opts,
+                    key="preset_select",
+                )
+                if picked != "(選択しない)":
+                    race_id_input = picked.split("(")[-1].rstrip(")")
+                    st.success(f"✓ 選択: **{race_id_input}** → このまま「予測実行」を押すとこのレースで予測します")
 
     if go and race_id_input:
         with st.spinner(f"netkeibaから取得中: {race_id_input}"):
@@ -347,7 +434,8 @@ with tab_predict:
             st.warning("出走馬データが取得できませんでした。レース前の場合は出馬表URL対応が必要です。")
             st.stop()
 
-        ranked = simple_top3_probabilities(entries_df)
+        ranked, prob_source = merge_lgbm_probs(entries_df, race_id_input)
+        st.caption(f"確率モデル: {prob_source}")
 
         st.subheader("📈 出走馬と3着内確率（暫定モデル）")
         ranked["馬メモ"] = ranked["horse_id"].apply(
@@ -362,41 +450,42 @@ with tab_predict:
             styled["p_top3"] = styled["p_top3"].round(3)
         st.dataframe(ja(styled), use_container_width=True, hide_index=True)
 
-        st.subheader("🎯 3連単3点予想")
+        st.subheader("🎯 3連単5点予想")
         race_meta_dict = {
             "date": meta.date, "race_name": meta.race_name, "grade": meta.grade,
             "course": meta.course, "distance": meta.distance, "surface": meta.surface,
             "weather": meta.weather, "track_cond": meta.track_cond,
         }
-        claude_pred = try_claude_trifecta(race_meta_dict, ranked) if st.checkbox(
-            "Claude推論を使う (.envにANTHROPIC_API_KEY必要)", value=False
-        ) else None
+        use_claude = st.checkbox(
+            "Claude推論を使う (.envにANTHROPIC_API_KEY必要)",
+            value=False,
+            disabled=not CHAT_ENABLED or not os.environ.get("ANTHROPIC_API_KEY"),
+            help="チェック時はClaudeに5点の組立を委任 (API料金あり)",
+        )
+        claude_pred = try_claude_trifecta(race_meta_dict, ranked) if use_claude else None
 
-        if claude_pred:
+        if claude_pred and claude_pred.picks:
             tri = {
-                "trifecta_1": claude_pred.trifecta_1,
-                "trifecta_2": claude_pred.trifecta_2,
-                "trifecta_3": claude_pred.trifecta_3,
+                "picks": claude_pred.picks,
                 "rationale": claude_pred.rationale,
                 "confidence": claude_pred.confidence,
             }
-            tag = "Claude Opus 4.7"
+            tag = "Claude Opus 4.7 (5点)"
         else:
             tri = build_simple_trifecta(ranked)
-            tag = "暫定モデル (人気/オッズ)"
+            tag = f"暫定モデル / {prob_source}"
 
+        picks_html = "<br/>".join(tri["picks"])
         st.markdown(
             f"""
             <div style="font-family: 'SF Mono', monospace; font-size: 2.2rem;
-                        font-weight: 700; line-height: 1.6; letter-spacing: 2px;">
-              {tri["trifecta_1"]}<br/>
-              {tri["trifecta_2"]}<br/>
-              {tri["trifecta_3"]}
+                        font-weight: 700; line-height: 1.5; letter-spacing: 2px;">
+              {picks_html}
             </div>
             """,
             unsafe_allow_html=True,
         )
-        st.caption(f"自信度: {tri['confidence']:.2f}  /  推論: {tag}")
+        st.caption(f"自信度: {tri['confidence']:.2f}  /  推論: {tag}  /  バックテスト命中率目安: 12-15%")
 
         with st.expander("根拠を見る"):
             st.write(tri["rationale"])
@@ -407,22 +496,20 @@ with tab_predict:
             actual_nums = actual_top3.sort_values("rank")["horse_number"].astype(int).tolist()
             if len(actual_nums) >= 3:
                 actual_tri = f"{actual_nums[0]}-{actual_nums[1]}-{actual_nums[2]}"
-                hit = actual_tri in {tri["trifecta_1"], tri["trifecta_2"], tri["trifecta_3"]}
+                hit = actual_tri in set(tri["picks"])
                 st.markdown("---")
                 st.subheader("✅ 実績照合（過去レースの場合）")
                 a, b = st.columns(2)
                 a.metric("実際の着順 (1-2-3)", actual_tri)
-                b.metric("3点的中", "🎉 的中!" if hit else "❌ 不的中")
+                b.metric("5点的中", "🎉 的中!" if hit else "❌ 不的中")
 
         if st.button("予測をDB保存"):
             pred_id = repo.insert_prediction(
                 race_id=race_id_input,
-                trifecta_1=tri["trifecta_1"],
-                trifecta_2=tri["trifecta_2"],
-                trifecta_3=tri["trifecta_3"],
+                picks=tri["picks"],
                 rationale=tri["rationale"],
                 confidence=tri["confidence"],
-                model_version="demo_simple_v1" if not claude_pred else "demo_claude_v1",
+                model_version="lgbm_v1" if prob_source == "LightGBM" else ("claude_v1" if claude_pred else "simple_v1"),
             )
             st.success(f"DB保存完了 (prediction_id={pred_id})")
 

@@ -72,6 +72,8 @@ CREATE TABLE IF NOT EXISTS predictions (
     trifecta_1      TEXT,
     trifecta_2      TEXT,
     trifecta_3      TEXT,
+    trifecta_4      TEXT,
+    trifecta_5      TEXT,
     rationale       TEXT,
     confidence      REAL,
     model_version   TEXT,

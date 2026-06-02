@@ -1,10 +1,10 @@
-"""3連単3点を組み立てる推論レイヤー。
+"""3連単5点を組み立てる Claude 推論レイヤー。
 
-LightGBMが出した各馬の3着内確率と、レース・出走馬の付加情報をClaudeに渡し、
-- 本命型1点
-- 連動型1点
+LightGBMが出した各馬の3着内確率 (p_top3) と、レース・出走馬の付加情報をClaudeに渡し、
+- 本命寄り2点
+- 連動型2点
 - 穴狙い1点
-の3点と根拠・自信度をJSONで受け取る。
+の計5点と根拠・自信度をJSONで受け取る。
 """
 from __future__ import annotations
 
@@ -19,18 +19,26 @@ from .claude_client import complete
 
 SYSTEM_PROMPT = """あなたは熟練の競馬予想家。
 ユーザーから渡される各馬の3着内確率(p_top3)と付加情報を踏まえ、
-3連単(1着→2着→3着の順)を3点だけ提案する。
-最低1点的中を狙う構成：
-- 1点目「本命型」: 高確率馬を軸に手堅く
-- 2点目「連動型」: 上位2頭固定+3着に中穴
-- 3点目「穴狙い」: 妙味のある中穴中心で回収率を狙う
+3連単(1着→2着→3着の順)を5点提案する。最低1点的中を狙う構成:
 
-必ず以下のJSON形式のみで応答し、前後に説明文を付けない。
+- 1点目「本命型」: 最高確率の軸馬で1-2-3着の本線
+- 2点目「2-3着入替」: 1-3-2着の流し
+- 3点目「3着差替」: 1-2-4着 (3着を中穴に差し替え)
+- 4点目「2着逆転」: 2-1-3着で2番手馬の1着
+- 5点目「穴狙い」: 妙味のある中穴を絡めた1点 (回収率重視)
+
+各馬のp_top3は3着内に入る確率(0.0〜1.0)。馬場状態・天候・脚質も加味する。
+
+必ず以下のJSON形式のみで応答し、前後に説明文を付けない:
 
 {
-  "trifecta_1": "umaban-umaban-umaban",
-  "trifecta_2": "umaban-umaban-umaban",
-  "trifecta_3": "umaban-umaban-umaban",
+  "picks": [
+    "umaban-umaban-umaban",
+    "umaban-umaban-umaban",
+    "umaban-umaban-umaban",
+    "umaban-umaban-umaban",
+    "umaban-umaban-umaban"
+  ],
   "rationale": "全体の根拠を300字程度で",
   "confidence": 0.0
 }
@@ -39,17 +47,19 @@ SYSTEM_PROMPT = """あなたは熟練の競馬予想家。
 
 @dataclass
 class TrifectaPrediction:
-    trifecta_1: str
-    trifecta_2: str
-    trifecta_3: str
+    picks: list[str]
     rationale: str
     confidence: float
 
 
 def _format_horse_table(horses: pd.DataFrame) -> str:
-    cols = [c for c in ["horse_number", "horse_name", "p_top3", "jockey_name",
-                        "handicap", "post_position", "odds", "popularity",
-                        "recent5_avg_rank"] if c in horses.columns]
+    cols = [c for c in [
+        "horse_number", "horse_name", "p_top3",
+        "popularity", "odds", "jockey_name",
+        "handicap", "age", "post_position",
+        "recent5_avg_rank", "recent5_top3_rate",
+        "prior_top3_rate_course", "prior_top3_rate_distance",
+    ] if c in horses.columns]
     return horses[cols].to_csv(index=False)
 
 
@@ -75,12 +85,15 @@ def _extract_json(text: str) -> dict:
 
 def predict_trifecta(race_meta: dict, horses: pd.DataFrame) -> TrifectaPrediction:
     user = build_user_prompt(race_meta, horses)
-    raw = complete(SYSTEM_PROMPT, user, temperature=0.3, max_tokens=1500)
+    raw = complete(SYSTEM_PROMPT, user, max_tokens=2000)
     obj = _extract_json(raw)
+    picks = obj.get("picks") or []
+    if not picks and "trifecta_1" in obj:
+        # 旧形式対応
+        picks = [obj.get(f"trifecta_{i}", "") for i in range(1, 6) if obj.get(f"trifecta_{i}")]
+    picks = [p for p in picks if p]
     return TrifectaPrediction(
-        trifecta_1=obj["trifecta_1"],
-        trifecta_2=obj["trifecta_2"],
-        trifecta_3=obj["trifecta_3"],
+        picks=picks[:5],
         rationale=obj.get("rationale", ""),
         confidence=float(obj.get("confidence", 0.0)),
     )

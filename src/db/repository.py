@@ -135,22 +135,23 @@ def race_count() -> int:
 
 def insert_prediction(
     race_id: str,
-    trifecta_1: str,
-    trifecta_2: str,
-    trifecta_3: str,
+    picks: list[str],
     rationale: str,
     confidence: float,
     model_version: str,
 ) -> int:
+    """3〜5点の予想を保存。picksに3-5個のtrifecta文字列を渡す。"""
+    p = list(picks) + [None] * 5
     with connect() as conn:
         cur = conn.execute(
             """
             INSERT INTO predictions (
-                race_id, trifecta_1, trifecta_2, trifecta_3,
+                race_id, trifecta_1, trifecta_2, trifecta_3, trifecta_4, trifecta_5,
                 rationale, confidence, model_version
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (race_id, trifecta_1, trifecta_2, trifecta_3, rationale, confidence, model_version),
+            (race_id, p[0], p[1], p[2], p[3], p[4],
+             rationale, confidence, model_version),
         )
         conn.commit()
         return cur.lastrowid
