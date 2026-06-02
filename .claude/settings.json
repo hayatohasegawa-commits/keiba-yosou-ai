@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/bin/python:*)",
+      "Bash(.venv/bin/pip:*)",
+      "Bash(python3:*)",
+      "Bash(python:*)",
+      "Bash(pip:*)",
+      "Bash(pytest:*)",
+      "Bash(brew install:*)",
+      "Bash(brew list:*)",
+      "Bash(curl:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(mkdir:*)",
+      "Bash(touch:*)",
+      "Bash(rm:data/raw/*)",
+      "Bash(rm:data/db/*.sqlite)",
+      "Bash(echo:*)",
+      "Bash(tail:*)",
+      "Bash(head:*)",
+      "Bash(wc:*)",
+      "Bash(sqlite3:*)",
+      "WebFetch(domain:db.netkeiba.com)",
+      "WebFetch(domain:race.netkeiba.com)",
+      "WebFetch(domain:www.jra.go.jp)"
+    ]
+  }
+}

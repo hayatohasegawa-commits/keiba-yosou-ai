@@ -1,0 +1,51 @@
+project:
+  name: 競馬予想AI
+  version: 0.1.0
+  timezone: Asia/Tokyo
+
+paths:
+  data_root: data
+  db_path: data/db/keiba.sqlite
+  raw_root: data/raw
+  features_root: data/features
+  models_root: models
+  logs_root: logs
+
+scraper:
+  user_agent: "KeibaYosouAI/0.1 (research; contact hayato.hasegawa@un-titled.co.jp)"
+  rate_limit_seconds: 2.0
+  timeout_seconds: 30
+  max_retries: 3
+  cache_ttl_days: 30
+
+collection:
+  history_years: 5
+  target_grades: [G1, G2, G3]
+  target_courses: [東京, 中山, 京都, 阪神, 中京, 札幌, 函館, 福島, 新潟, 小倉]
+
+model:
+  type: lightgbm
+  target: top3
+  params:
+    objective: binary
+    metric: binary_logloss
+    learning_rate: 0.05
+    num_leaves: 31
+    min_data_in_leaf: 20
+    feature_fraction: 0.9
+    bagging_fraction: 0.8
+    bagging_freq: 5
+
+reasoning:
+  model: claude-opus-4-7
+  max_tokens: 2000
+  temperature: 0.3
+
+target_race:
+  date: 2026-06-07
+  name: 安田記念
+  grade: G1
+  course: 東京
+  distance: 1600
+  surface: 芝
+  url: https://www.jra.go.jp/keiba/g1/yasuda.html

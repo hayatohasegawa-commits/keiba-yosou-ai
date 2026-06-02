@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.keiba.daily-update</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/hasegawahayato/Desktop/競馬予想AI/.venv/bin/python</string>
+        <string>/Users/hasegawahayato/Desktop/競馬予想AI/scripts/daily_update.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/hasegawahayato/Desktop/競馬予想AI</string>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>5</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/hasegawahayato/Desktop/競馬予想AI/logs/launchd.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/hasegawahayato/Desktop/競馬予想AI/logs/launchd.err.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
