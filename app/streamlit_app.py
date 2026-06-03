@@ -34,10 +34,13 @@ from src.db import repository as repo  # noqa: E402
 from src.features.horse_memo import build_horse_memo  # noqa: E402
 
 st.set_page_config(
-    page_title="競馬予想AI",
+    page_title="競馬予想AI | Powered by AI",
     page_icon="🐎",
     layout="wide",
     initial_sidebar_state="expanded",
+    menu_items={
+        "About": "競馬予想AI - LightGBM + Claude推論で3連単5点の最適解",
+    },
 )
 
 
@@ -157,136 +160,191 @@ def ja(df: pd.DataFrame) -> pd.DataFrame:
 
 st.markdown("""
 <style>
-/* === デザイン: ネイビー × エメラルド × ゴールド (ミニマル・スタイリッシュ) === */
+/* === ダーク・シネマティック (Rebike風 + 競馬AI) === */
 :root {
-    --c-navy: #0a2540;
-    --c-navy-deep: #061b32;
+    --c-bg: #0a0a0f;
+    --c-bg-2: #12131a;
+    --c-surface: #1a1b24;
+    --c-surface-hover: #22232e;
     --c-emerald: #10b981;
+    --c-emerald-soft: #34d399;
     --c-gold: #d4af37;
-    --c-warm: #f59e0b;
-    --c-cream: #fafaf7;
-    --c-paper: #ffffff;
-    --c-ink: #1a1a2e;
-    --c-sub: #6b7280;
-    --c-line: rgba(10,37,64,0.08);
+    --c-gold-bright: #f4d976;
+    --c-text: #f5f5f7;
+    --c-text-sub: #a1a1aa;
+    --c-text-dim: #71717a;
+    --c-line: rgba(255,255,255,0.08);
+    --c-line-bright: rgba(255,255,255,0.15);
 }
 
-/* 全体背景: ペーパーホワイト + 微細グラデ */
+/* 全体: 真っ黒ベース + 微細グラデ */
 .stApp {
     background:
-        radial-gradient(circle at 0% 0%, rgba(16,185,129,0.04) 0%, transparent 40%),
-        radial-gradient(circle at 100% 0%, rgba(212,175,55,0.04) 0%, transparent 40%),
-        var(--c-cream);
+        radial-gradient(circle at 20% 0%, rgba(16,185,129,0.06) 0%, transparent 50%),
+        radial-gradient(circle at 80% 100%, rgba(212,175,55,0.05) 0%, transparent 50%),
+        var(--c-bg) !important;
+    color: var(--c-text) !important;
 }
 section.main > div.block-container {
-    padding-top: 2rem;
+    padding-top: 0 !important;
     padding-right: 400px;
     max-width: 100%;
 }
 
-/* タイトル: 上品なセリフ風 */
+/* タイトル: 大きく・太く・印象的 */
 h1, .stApp h1 {
-    color: var(--c-navy-deep) !important;
-    font-weight: 700 !important;
-    letter-spacing: -0.02em;
+    color: var(--c-text) !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.03em;
+    font-size: 3.5rem !important;
+    line-height: 1.05 !important;
 }
 h2, .stApp h2 {
-    color: var(--c-navy) !important;
-    border-left: 4px solid var(--c-emerald);
-    padding-left: 12px;
-    margin-top: 2rem !important;
+    color: var(--c-text) !important;
+    border-left: 3px solid var(--c-gold);
+    padding-left: 14px;
+    margin-top: 2.5rem !important;
+    font-weight: 700 !important;
 }
 h3, .stApp h3 {
-    color: var(--c-navy) !important;
+    color: var(--c-text) !important;
     font-weight: 600 !important;
 }
 
-/* タブ: 上品なボーダー + アクティブ強調 */
+/* ストリームのpタグも明るく */
+.stApp p, .stApp span, .stApp label, .stApp div { color: inherit; }
+.stMarkdown { color: var(--c-text) !important; }
+.stMarkdown p { color: var(--c-text) !important; }
+
+/* タブ: 上品・ダーク基調 */
+div[data-baseweb="tab-list"] {
+    background: transparent !important;
+    border-bottom: 1px solid var(--c-line) !important;
+    gap: 4px !important;
+}
 button[data-baseweb="tab"] {
     font-weight: 600 !important;
-    color: var(--c-sub) !important;
-    padding: 12px 20px !important;
-    border-radius: 8px 8px 0 0 !important;
+    color: var(--c-text-sub) !important;
+    padding: 14px 22px !important;
+    background: transparent !important;
+    border-radius: 0 !important;
     transition: all 0.2s ease;
 }
 button[data-baseweb="tab"][aria-selected="true"] {
-    color: var(--c-navy-deep) !important;
-    background: linear-gradient(180deg, rgba(16,185,129,0.06), transparent) !important;
-    border-bottom: 2px solid var(--c-emerald) !important;
+    color: var(--c-gold) !important;
+    background: transparent !important;
+    border-bottom: 2px solid var(--c-gold) !important;
 }
 button[data-baseweb="tab"]:hover {
-    color: var(--c-navy) !important;
-    background: rgba(10,37,64,0.03) !important;
+    color: var(--c-text) !important;
+    background: rgba(255,255,255,0.02) !important;
 }
+div[data-baseweb="tab-panel"] { padding-top: 1rem !important; }
 
-/* 予測実行ボタン: グラデーション + シャドウ */
+/* primary ボタン: 金グラデ */
 button[data-testid="baseButton-primary"] {
-    background: linear-gradient(135deg, var(--c-emerald), #059669) !important;
-    color: white !important;
+    background: linear-gradient(135deg, var(--c-gold), #b8941f) !important;
+    color: #0a0a0f !important;
     border: none !important;
     border-radius: 10px !important;
-    font-weight: 600 !important;
-    padding: 10px 24px !important;
-    box-shadow: 0 4px 12px rgba(16,185,129,0.3) !important;
+    font-weight: 700 !important;
+    padding: 12px 28px !important;
+    letter-spacing: 0.01em !important;
+    box-shadow: 0 4px 20px rgba(212,175,55,0.25) !important;
     transition: transform 0.15s ease, box-shadow 0.15s ease !important;
 }
 button[data-testid="baseButton-primary"]:hover {
-    transform: translateY(-1px) !important;
-    box-shadow: 0 6px 16px rgba(16,185,129,0.4) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 28px rgba(212,175,55,0.4) !important;
 }
 
-/* 通常ボタン: アウトライン上品 */
-button[data-testid="baseButton-secondary"] {
-    background: white !important;
-    color: var(--c-navy) !important;
-    border: 1px solid var(--c-line) !important;
-    border-radius: 8px !important;
+/* secondary ボタン: アウトライン暗色 */
+button[data-testid="baseButton-secondary"], div[data-testid="stButton"] button {
+    background: var(--c-surface) !important;
+    color: var(--c-text) !important;
+    border: 1px solid var(--c-line-bright) !important;
+    border-radius: 10px !important;
     font-weight: 500 !important;
+    transition: all 0.15s ease;
 }
-button[data-testid="baseButton-secondary"]:hover {
-    border-color: var(--c-emerald) !important;
-    color: var(--c-emerald) !important;
+button[data-testid="baseButton-secondary"]:hover, div[data-testid="stButton"] button:hover {
+    border-color: var(--c-gold) !important;
+    color: var(--c-gold) !important;
+    background: rgba(212,175,55,0.05) !important;
+}
+/* primary は上書きの上書きで保持 */
+div[data-testid="stButton"] button[kind="primary"] {
+    background: linear-gradient(135deg, var(--c-gold), #b8941f) !important;
+    color: #0a0a0f !important;
+    border: none !important;
 }
 
-/* メトリック: カード風 */
-div[data-testid="stMetric"] {
-    background: var(--c-paper);
-    padding: 16px 20px;
-    border-radius: 12px;
-    border: 1px solid var(--c-line);
-    box-shadow: 0 1px 3px rgba(10,37,64,0.04);
+/* 入力フィールド */
+.stTextInput input, .stSelectbox div[role="combobox"], .stDateInput input {
+    background: var(--c-surface) !important;
+    color: var(--c-text) !important;
+    border: 1px solid var(--c-line-bright) !important;
+    border-radius: 8px !important;
 }
-div[data-testid="stMetricLabel"] {
-    color: var(--c-sub) !important;
+.stTextInput input::placeholder { color: var(--c-text-dim) !important; }
+
+/* メトリック: 暗カードに金アクセント */
+div[data-testid="stMetric"] {
+    background: var(--c-surface) !important;
+    padding: 18px 22px !important;
+    border-radius: 14px !important;
+    border: 1px solid var(--c-line) !important;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3) !important;
+}
+div[data-testid="stMetricLabel"], div[data-testid="stMetricLabel"] * {
+    color: var(--c-text-sub) !important;
     font-size: 0.85rem !important;
     font-weight: 500 !important;
 }
-div[data-testid="stMetricValue"] {
-    color: var(--c-navy-deep) !important;
-    font-weight: 700 !important;
+div[data-testid="stMetricValue"], div[data-testid="stMetricValue"] * {
+    color: var(--c-gold) !important;
+    font-weight: 800 !important;
+    font-size: 1.8rem !important;
 }
 
-/* コンテナ (border=True 用): エレガントカード */
-div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlockBorderWrapper"] {
-    background: var(--c-paper) !important;
+/* container (border=True): 上品な暗カード */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    background: var(--c-surface) !important;
     border: 1px solid var(--c-line) !important;
-    border-radius: 14px !important;
-    box-shadow: 0 2px 8px rgba(10,37,64,0.04) !important;
-    padding: 16px 20px !important;
-    transition: box-shadow 0.2s ease;
+    border-radius: 16px !important;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.25) !important;
+    padding: 20px 24px !important;
+    transition: all 0.2s ease;
 }
-div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlockBorderWrapper"]:hover {
-    box-shadow: 0 4px 16px rgba(10,37,64,0.08) !important;
+div[data-testid="stVerticalBlockBorderWrapper"]:hover {
+    border-color: var(--c-line-bright) !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4) !important;
 }
 
-/* テーブル: 上品なライン */
+/* テーブル: 暗テーマ */
 div[data-testid="stDataFrame"] {
-    border-radius: 10px !important;
-    overflow: hidden !important;
+    background: var(--c-surface) !important;
+    border-radius: 12px !important;
     border: 1px solid var(--c-line) !important;
+    overflow: hidden !important;
 }
 
-/* sidebar: 右配置 + ガラス風 */
+/* alert系の色 */
+div[data-testid="stAlert"] {
+    background: var(--c-surface) !important;
+    border-left-width: 4px !important;
+    color: var(--c-text) !important;
+}
+
+/* expander: 暗 */
+div[data-testid="stExpander"] {
+    background: var(--c-surface) !important;
+    border: 1px solid var(--c-line) !important;
+    border-radius: 12px !important;
+}
+div[data-testid="stExpander"] summary { color: var(--c-text) !important; }
+
+/* sidebar: 右配置ガラス暗 */
 section[data-testid="stSidebar"] {
     position: fixed;
     right: 0;
@@ -294,31 +352,90 @@ section[data-testid="stSidebar"] {
     top: 0;
     height: 100vh;
     width: 380px !important;
-    background: rgba(255,255,255,0.85) !important;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border-left: 1px solid var(--c-line);
-    box-shadow: -8px 0 24px rgba(10,37,64,0.06);
+    background: rgba(18,19,26,0.92) !important;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-left: 1px solid var(--c-line) !important;
+    box-shadow: -12px 0 32px rgba(0,0,0,0.5);
+    color: var(--c-text) !important;
 }
+section[data-testid="stSidebar"] * { color: var(--c-text); }
 section[data-testid="stSidebar"] > div { width: 380px !important; }
 section[data-testid="stSidebar"] [data-testid="stChatInput"] {
-    background: rgba(10,37,64,0.02) !important;
+    background: rgba(255,255,255,0.04) !important;
     border-radius: 12px !important;
+    border: 1px solid var(--c-line) !important;
+}
+section[data-testid="stSidebar"] [data-testid="stChatInput"] textarea {
+    background: transparent !important;
+    color: var(--c-text) !important;
 }
 button[kind="header"][data-testid="baseButton-header"] { right: 380px; }
 
-/* キャプション: 上品なグレー */
-div[data-testid="stCaptionContainer"], .stCaption {
-    color: var(--c-sub) !important;
+/* captionは控えめグレー */
+div[data-testid="stCaptionContainer"], .stCaption,
+small, .stCaption span {
+    color: var(--c-text-dim) !important;
     font-size: 0.85rem !important;
 }
 
-/* スピナー: エメラルド */
-.stSpinner > div { border-top-color: var(--c-emerald) !important; }
+/* リンク: 金 */
+a, a:visited { color: var(--c-gold) !important; text-decoration: none; }
+a:hover { color: var(--c-gold-bright) !important; text-decoration: underline; }
 
-/* リンク: ネイビー */
-a, a:visited { color: var(--c-emerald) !important; }
-a:hover { color: var(--c-navy) !important; }
+/* スクロールバー */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--c-bg); }
+::-webkit-scrollbar-thumb { background: var(--c-line-bright); border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: var(--c-gold); }
+
+/* ヒーロー: 真っ黒オーバーレイで馬の輪郭を活かす */
+.hero-wrap {
+    position: relative;
+    margin: -1rem -1rem 2rem -1rem;
+    border-radius: 0;
+    overflow: hidden;
+}
+.hero-wrap img {
+    width: 100%;
+    display: block;
+    filter: brightness(0.7) contrast(1.1);
+}
+.hero-overlay {
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(180deg, rgba(10,10,15,0.3) 0%, rgba(10,10,15,0.85) 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 3rem 2.5rem 2rem;
+}
+.hero-title {
+    font-size: 4rem !important;
+    font-weight: 800 !important;
+    color: var(--c-text) !important;
+    letter-spacing: -0.03em;
+    margin: 0 0 0.5rem 0;
+    line-height: 1;
+}
+.hero-sub {
+    font-size: 1.15rem;
+    color: var(--c-text-sub);
+    margin: 0;
+    font-weight: 400;
+}
+.hero-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin: 0 8px; vertical-align: middle; }
+
+/* セクション番号ラベル (01/02風) */
+.section-num {
+    display: inline-block;
+    font-family: 'SF Mono', monospace;
+    color: var(--c-gold);
+    font-size: 0.85rem;
+    letter-spacing: 0.2em;
+    margin-bottom: 0.5rem;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -451,28 +568,35 @@ def merge_lgbm_probs(entries_df: pd.DataFrame, race_id: str) -> tuple[pd.DataFra
 
 # ---------- UI ----------
 
-_hero = ROOT / "app" / "assets" / "hero_banner.png"
-if _hero.exists():
-    st.image(str(_hero), use_container_width=True)
-st.markdown(
-    """
-    <div style="text-align: center; padding: 8px 0 24px 0;">
-      <h1 style="margin: 0; font-size: 2.4rem; letter-spacing: -0.02em;">
-        競馬予想AI
-      </h1>
-      <p style="color: var(--c-sub, #6b7280); margin: 4px 0 0; font-size: 1.05rem;">
-        データで読み解く、3連単5点の最適解。
-        <span style="color: var(--c-emerald, #10b981);">●</span>
-        netkeibaから自動取得
-        <span style="color: var(--c-gold, #d4af37);">●</span>
-        LightGBM AUC 0.83
-        <span style="color: var(--c-warm, #f59e0b);">●</span>
-        蓄積でPDCA
-      </p>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+import base64 as _b64
+_hero_dark = ROOT / "app" / "assets" / "hero_dark.png"
+_hero_legacy = ROOT / "app" / "assets" / "hero_banner.png"
+_hero_path = _hero_dark if _hero_dark.exists() else _hero_legacy
+if _hero_path.exists():
+    _hero_b64 = _b64.b64encode(_hero_path.read_bytes()).decode()
+    st.markdown(
+        f"""
+        <div class="hero-wrap">
+          <img src="data:image/png;base64,{_hero_b64}" alt="競馬予想AI" />
+          <div class="hero-overlay">
+            <div class="section-num">01 ・ AI POWERED RACING PREDICTIONS</div>
+            <h1 class="hero-title">競馬予想AI</h1>
+            <p class="hero-sub">
+              データで読み解く、3連単5点の最適解。
+              <span class="hero-dot" style="background:#10b981;"></span> netkeiba自動取得
+              <span class="hero-dot" style="background:#d4af37;"></span> LightGBM AUC 0.83
+              <span class="hero-dot" style="background:#f4d976;"></span> 6,300+ レース蓄積
+            </p>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+else:
+    st.markdown(
+        '<h1 style="font-size:3.5rem; margin:1rem 0 2rem;">競馬予想AI</h1>',
+        unsafe_allow_html=True,
+    )
 
 if "chat_session_id" not in st.session_state:
     st.session_state.chat_session_id = f"sess_{datetime.now():%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:6]}"
