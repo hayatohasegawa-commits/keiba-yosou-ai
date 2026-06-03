@@ -32,7 +32,10 @@ def fetch_trifecta_odds(race_id: str, timeout: int = 15) -> dict[str, float]:
     except Exception:
         return {}
 
-    odds_dict = data.get("data", {}).get("odds", {}).get("8", {})
+    data_field = data.get("data")
+    if not isinstance(data_field, dict):
+        return {}
+    odds_dict = data_field.get("odds", {}).get("8", {}) if isinstance(data_field.get("odds"), dict) else {}
     result: dict[str, float] = {}
     for key, vals in odds_dict.items():
         if not isinstance(key, str) or len(key) != 6:
