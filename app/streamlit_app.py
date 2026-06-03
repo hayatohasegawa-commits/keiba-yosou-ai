@@ -29,6 +29,7 @@ sys.path.insert(0, str(ROOT))
 load_dotenv(ROOT / ".env")
 
 from src.scraper import netkeiba, race_id as race_id_mod  # noqa: E402
+from src.scraper.odds import fetch_trifecta_odds  # noqa: E402
 from src.db import repository as repo  # noqa: E402
 from src.features.horse_memo import build_horse_memo  # noqa: E402
 
@@ -475,16 +476,58 @@ with tab_predict:
             tri = build_simple_trifecta(ranked)
             tag = f"暫定モデル / {prob_source}"
 
-        picks_html = "<br/>".join(tri["picks"])
-        st.markdown(
-            f"""
-            <div style="font-family: 'SF Mono', monospace; font-size: 2.2rem;
-                        font-weight: 700; line-height: 1.5; letter-spacing: 2px;">
-              {picks_html}
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        odds_map = {}
+        if st.checkbox("3連単オッズを取得して表示", value=True, key="show_odds",
+                       help="netkeibaから現時点のオッズを取得（数秒）"):
+            with st.spinner("オッズ取得中..."):
+                odds_map = fetch_trifecta_odds(race_id_input)
+
+        if odds_map:
+            rows_html = ""
+            total_expected = 0.0
+            max_expected = 0.0
+            for p in tri["picks"]:
+                o = odds_map.get(p)
+                if o is not None:
+                    payout = o * 100
+                    total_expected += payout
+                    max_expected = max(max_expected, payout)
+                    rows_html += (
+                        f'<div style="display:flex; justify-content:space-between; '
+                        f'padding:6px 0; border-bottom:1px solid #eee;">'
+                        f'<span style="font-family:monospace; font-size:1.4rem; font-weight:700;">{p}</span>'
+                        f'<span style="font-size:1.1rem; color:#555;">'
+                        f'<b style="color:#d9480f;">{o:,.1f}倍</b> → '
+                        f'<span style="color:#2b8a3e;">{payout:,.0f}円</span>'
+                        f'</span></div>'
+                    )
+                else:
+                    rows_html += (
+                        f'<div style="display:flex; justify-content:space-between; '
+                        f'padding:6px 0; border-bottom:1px solid #eee;">'
+                        f'<span style="font-family:monospace; font-size:1.4rem; font-weight:700;">{p}</span>'
+                        f'<span style="color:#999;">オッズ未取得</span>'
+                        f'</div>'
+                    )
+            st.markdown(f'<div style="background:#fff; padding:8px 16px; border-radius:6px;">{rows_html}</div>', unsafe_allow_html=True)
+
+            avg_payout = total_expected / max(1, len([p for p in tri["picks"] if odds_map.get(p) is not None]))
+            m1, m2, m3 = st.columns(3)
+            m1.metric("購入コスト", "500円", help="5点×100円")
+            m2.metric("最大期待払戻", f"{max_expected:,.0f}円")
+            m3.metric("平均期待払戻", f"{avg_payout:,.0f}円")
+        else:
+            picks_html = "<br/>".join(tri["picks"])
+            st.markdown(
+                f"""
+                <div style="font-family: 'SF Mono', monospace; font-size: 2.2rem;
+                            font-weight: 700; line-height: 1.5; letter-spacing: 2px;">
+                  {picks_html}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
         st.caption(f"自信度: {tri['confidence']:.2f}  /  推論: {tag}  /  バックテスト命中率目安: 12-15%")
 
         with st.expander("根拠を見る"):
