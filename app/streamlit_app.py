@@ -319,9 +319,80 @@ if "chat_turn_index" not in st.session_state:
 if "active_tab" not in st.session_state:
     st.session_state.active_tab = "予測"
 
-tab_predict, tab_db, tab_history, tab_eval, tab_chat = st.tabs([
-    "🎯 予測", "📊 DBレース閲覧", "📜 予測履歴", "🏁 精度", "💬 会話ログ"
+tab_today, tab_predict, tab_db, tab_history, tab_eval, tab_chat = st.tabs([
+    "📅 今日の予測", "🎯 予測", "📊 DBレース閲覧", "📜 予測履歴", "🏁 精度", "💬 会話ログ"
 ])
+
+
+with tab_today:
+    st.subheader("📅 今日の予測一覧")
+    today_iso = datetime.now().strftime("%Y-%m-%d")
+    chosen_date = st.date_input(
+        "対象日",
+        value=datetime.strptime(today_iso, "%Y-%m-%d"),
+        key="today_date",
+    )
+    date_str = chosen_date.strftime("%Y-%m-%d")
+
+    with sqlite3.connect(repo.db_path()) as conn:
+        today_df = pd.read_sql_query(
+            """
+            SELECT r.race_id, r.date, r.course, r.race_number, r.race_name,
+                   r.grade, r.distance, r.surface,
+                   p.trifecta_1, p.trifecta_2, p.trifecta_3,
+                   p.trifecta_4, p.trifecta_5,
+                   p.confidence, p.rationale, p.hit, p.created_at
+            FROM races r LEFT JOIN predictions p USING(race_id)
+            WHERE r.date = ?
+            ORDER BY r.race_number
+            """,
+            conn, params=(date_str,),
+        )
+
+    if today_df.empty:
+        st.info(f"{date_str} のレース・予測がDBにありません")
+    else:
+        venues = today_df["course"].dropna().unique().tolist()
+        st.markdown(f"**📌 {date_str}** ・ 開催場: {' / '.join(venues)} ・ レース数: **{len(today_df)}**")
+
+        with_pred = today_df.dropna(subset=["trifecta_1"])
+        if not with_pred.empty:
+            avg_conf = with_pred["confidence"].dropna().mean()
+            hits = with_pred["hit"].dropna()
+            hit_rate = (hits == 1).mean() * 100 if not hits.empty else None
+            c1, c2, c3 = st.columns(3)
+            c1.metric("予測済みレース", f"{len(with_pred)} / {len(today_df)}")
+            c2.metric("平均自信度", f"{avg_conf:.2f}" if pd.notna(avg_conf) else "-")
+            c3.metric("命中率", f"{hit_rate:.1f}%" if hit_rate is not None else "未判定")
+
+        st.markdown("---")
+        for _, r in today_df.iterrows():
+            with st.container(border=True):
+                head = f"### {r['race_number']}R　{r['race_name'] or ''}"
+                if r["grade"]:
+                    head += f"　[{r['grade']}]"
+                st.markdown(head)
+                meta_parts = []
+                if r["course"]: meta_parts.append(f"📍 {r['course']}")
+                if r["distance"]: meta_parts.append(f"📏 {r['surface'] or ''}{r['distance']}m")
+                if r["confidence"] is not None and not pd.isna(r["confidence"]):
+                    meta_parts.append(f"💡 自信度 {r['confidence']:.2f}")
+                st.caption(" ・ ".join(meta_parts))
+
+                if pd.isna(r["trifecta_1"]):
+                    st.info("予測未実行 → 「🎯 予測」タブで race_id を入れて実行")
+                    continue
+                picks = [r[f"trifecta_{i}"] for i in range(1, 6) if not pd.isna(r[f"trifecta_{i}"]) and r[f"trifecta_{i}"]]
+                picks_html = " ・ ".join(f'<span style="font-family:monospace; font-weight:700; font-size:1.1rem; background:#fff3bf; padding:2px 8px; border-radius:4px; margin:2px;">{p}</span>' for p in picks)
+                st.markdown(f"**🎯 3連単{len(picks)}点**: {picks_html}", unsafe_allow_html=True)
+                if r["rationale"]:
+                    with st.expander("根拠"):
+                        st.write(r["rationale"])
+                if r["hit"] is not None and not pd.isna(r["hit"]):
+                    if r["hit"] == 1:
+                        st.success("🎉 的中")
+                    else:
+                        st.warning("❌ 不的中")
 
 
 with tab_predict:
