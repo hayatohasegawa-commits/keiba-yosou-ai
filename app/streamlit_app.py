@@ -326,11 +326,29 @@ tab_predict, tab_db, tab_history, tab_eval, tab_chat = st.tabs([
 
 with tab_predict:
     st.subheader("レース指定")
+
+    if "race_id_text" not in st.session_state:
+        st.session_state.race_id_text = race_id_mod.yasuda_kinen_2026_race_id()
+
+    st.markdown("**📌 注目レース（ワンタップ）**")
+    QUICK_RACES = [
+        ("202605030211", "🐎 安田記念", "6/7予測"),
+        ("202605021211", "🏆 ダービー", "5/31"),
+        ("202605021011", "🌸 オークス", "5/24"),
+        ("202605020811", "💎 VM", "5/17"),
+        ("202605020611", "🛣 NHKマイル", "5/10"),
+    ]
+    qcols = st.columns(len(QUICK_RACES))
+    for col, (rid, name, date) in zip(qcols, QUICK_RACES):
+        with col:
+            if st.button(f"{name}\n{date}", use_container_width=True, key=f"q_{rid}"):
+                st.session_state.race_id_text = rid
+
     col1, col2 = st.columns([2, 1])
     with col1:
         race_id_input = st.text_input(
             "race_id (12桁)",
-            value=race_id_mod.yasuda_kinen_2026_race_id(),
+            key="race_id_text",
             help="例: 202505030211 (2025安田記念), 202605030211 (2026安田記念予想)",
         )
     with col2:
