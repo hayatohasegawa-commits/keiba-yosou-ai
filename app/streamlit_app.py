@@ -157,7 +157,136 @@ def ja(df: pd.DataFrame) -> pd.DataFrame:
 
 st.markdown("""
 <style>
-/* sidebarを右寄せフローティング風に */
+/* === デザイン: ネイビー × エメラルド × ゴールド (ミニマル・スタイリッシュ) === */
+:root {
+    --c-navy: #0a2540;
+    --c-navy-deep: #061b32;
+    --c-emerald: #10b981;
+    --c-gold: #d4af37;
+    --c-warm: #f59e0b;
+    --c-cream: #fafaf7;
+    --c-paper: #ffffff;
+    --c-ink: #1a1a2e;
+    --c-sub: #6b7280;
+    --c-line: rgba(10,37,64,0.08);
+}
+
+/* 全体背景: ペーパーホワイト + 微細グラデ */
+.stApp {
+    background:
+        radial-gradient(circle at 0% 0%, rgba(16,185,129,0.04) 0%, transparent 40%),
+        radial-gradient(circle at 100% 0%, rgba(212,175,55,0.04) 0%, transparent 40%),
+        var(--c-cream);
+}
+section.main > div.block-container {
+    padding-top: 2rem;
+    padding-right: 400px;
+    max-width: 100%;
+}
+
+/* タイトル: 上品なセリフ風 */
+h1, .stApp h1 {
+    color: var(--c-navy-deep) !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.02em;
+}
+h2, .stApp h2 {
+    color: var(--c-navy) !important;
+    border-left: 4px solid var(--c-emerald);
+    padding-left: 12px;
+    margin-top: 2rem !important;
+}
+h3, .stApp h3 {
+    color: var(--c-navy) !important;
+    font-weight: 600 !important;
+}
+
+/* タブ: 上品なボーダー + アクティブ強調 */
+button[data-baseweb="tab"] {
+    font-weight: 600 !important;
+    color: var(--c-sub) !important;
+    padding: 12px 20px !important;
+    border-radius: 8px 8px 0 0 !important;
+    transition: all 0.2s ease;
+}
+button[data-baseweb="tab"][aria-selected="true"] {
+    color: var(--c-navy-deep) !important;
+    background: linear-gradient(180deg, rgba(16,185,129,0.06), transparent) !important;
+    border-bottom: 2px solid var(--c-emerald) !important;
+}
+button[data-baseweb="tab"]:hover {
+    color: var(--c-navy) !important;
+    background: rgba(10,37,64,0.03) !important;
+}
+
+/* 予測実行ボタン: グラデーション + シャドウ */
+button[data-testid="baseButton-primary"] {
+    background: linear-gradient(135deg, var(--c-emerald), #059669) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    padding: 10px 24px !important;
+    box-shadow: 0 4px 12px rgba(16,185,129,0.3) !important;
+    transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+}
+button[data-testid="baseButton-primary"]:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 16px rgba(16,185,129,0.4) !important;
+}
+
+/* 通常ボタン: アウトライン上品 */
+button[data-testid="baseButton-secondary"] {
+    background: white !important;
+    color: var(--c-navy) !important;
+    border: 1px solid var(--c-line) !important;
+    border-radius: 8px !important;
+    font-weight: 500 !important;
+}
+button[data-testid="baseButton-secondary"]:hover {
+    border-color: var(--c-emerald) !important;
+    color: var(--c-emerald) !important;
+}
+
+/* メトリック: カード風 */
+div[data-testid="stMetric"] {
+    background: var(--c-paper);
+    padding: 16px 20px;
+    border-radius: 12px;
+    border: 1px solid var(--c-line);
+    box-shadow: 0 1px 3px rgba(10,37,64,0.04);
+}
+div[data-testid="stMetricLabel"] {
+    color: var(--c-sub) !important;
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+}
+div[data-testid="stMetricValue"] {
+    color: var(--c-navy-deep) !important;
+    font-weight: 700 !important;
+}
+
+/* コンテナ (border=True 用): エレガントカード */
+div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlockBorderWrapper"] {
+    background: var(--c-paper) !important;
+    border: 1px solid var(--c-line) !important;
+    border-radius: 14px !important;
+    box-shadow: 0 2px 8px rgba(10,37,64,0.04) !important;
+    padding: 16px 20px !important;
+    transition: box-shadow 0.2s ease;
+}
+div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlockBorderWrapper"]:hover {
+    box-shadow: 0 4px 16px rgba(10,37,64,0.08) !important;
+}
+
+/* テーブル: 上品なライン */
+div[data-testid="stDataFrame"] {
+    border-radius: 10px !important;
+    overflow: hidden !important;
+    border: 1px solid var(--c-line) !important;
+}
+
+/* sidebar: 右配置 + ガラス風 */
 section[data-testid="stSidebar"] {
     position: fixed;
     right: 0;
@@ -165,16 +294,31 @@ section[data-testid="stSidebar"] {
     top: 0;
     height: 100vh;
     width: 380px !important;
-    border-left: 1px solid rgba(128,128,128,0.25);
-    box-shadow: -4px 0 12px rgba(0,0,0,0.08);
+    background: rgba(255,255,255,0.85) !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-left: 1px solid var(--c-line);
+    box-shadow: -8px 0 24px rgba(10,37,64,0.06);
 }
 section[data-testid="stSidebar"] > div { width: 380px !important; }
-/* メインエリアの右にsidebar分の余白 */
-section.main > div.block-container { padding-right: 400px; max-width: 100%; }
-/* sidebar内のチャット入力を見やすく */
-section[data-testid="stSidebar"] [data-testid="stChatInput"] { background: rgba(0,0,0,0.02); }
-/* 折りたたみボタンを右寄せに合わせる */
+section[data-testid="stSidebar"] [data-testid="stChatInput"] {
+    background: rgba(10,37,64,0.02) !important;
+    border-radius: 12px !important;
+}
 button[kind="header"][data-testid="baseButton-header"] { right: 380px; }
+
+/* キャプション: 上品なグレー */
+div[data-testid="stCaptionContainer"], .stCaption {
+    color: var(--c-sub) !important;
+    font-size: 0.85rem !important;
+}
+
+/* スピナー: エメラルド */
+.stSpinner > div { border-top-color: var(--c-emerald) !important; }
+
+/* リンク: ネイビー */
+a, a:visited { color: var(--c-emerald) !important; }
+a:hover { color: var(--c-navy) !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -307,8 +451,28 @@ def merge_lgbm_probs(entries_df: pd.DataFrame, race_id: str) -> tuple[pd.DataFra
 
 # ---------- UI ----------
 
-st.title("🐎 競馬予想AI デモ")
-st.caption("任意のJRAレースに対して3連単3点を提案 / netkeibaから自動取得 / DB蓄積でPDCA")
+_hero = ROOT / "app" / "assets" / "hero_banner.png"
+if _hero.exists():
+    st.image(str(_hero), use_container_width=True)
+st.markdown(
+    """
+    <div style="text-align: center; padding: 8px 0 24px 0;">
+      <h1 style="margin: 0; font-size: 2.4rem; letter-spacing: -0.02em;">
+        競馬予想AI
+      </h1>
+      <p style="color: var(--c-sub, #6b7280); margin: 4px 0 0; font-size: 1.05rem;">
+        データで読み解く、3連単5点の最適解。
+        <span style="color: var(--c-emerald, #10b981);">●</span>
+        netkeibaから自動取得
+        <span style="color: var(--c-gold, #d4af37);">●</span>
+        LightGBM AUC 0.83
+        <span style="color: var(--c-warm, #f59e0b);">●</span>
+        蓄積でPDCA
+      </p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 if "chat_session_id" not in st.session_state:
     st.session_state.chat_session_id = f"sess_{datetime.now():%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:6]}"
@@ -390,9 +554,15 @@ with tab_today:
                         st.write(r["rationale"])
                 if r["hit"] is not None and not pd.isna(r["hit"]):
                     if r["hit"] == 1:
-                        st.success("🎉 的中")
+                        trophy = ROOT / "app" / "assets" / "trophy_icon.png"
+                        hit_cols = st.columns([1, 5])
+                        if trophy.exists():
+                            with hit_cols[0]:
+                                st.image(str(trophy), width=64)
+                        with hit_cols[1]:
+                            st.success("🎉 的中！次のレースへ、さらに当てに行こう。")
                     else:
-                        st.warning("❌ 不的中")
+                        st.info("📊 不的中 - データを蓄積、次回の精度向上へ")
 
 
 with tab_predict:
