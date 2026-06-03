@@ -137,6 +137,20 @@ def build_features(df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
     # 馬×馬場種別
     df = df.join(_agg_top3_rate_by(df, ["horse_id", "surface"], "surface"))
 
+    # 🆕 thisweek系: 騎手の過去7日/3日の勝率・複勝率
+    jw7 = _rolling_window_rates(df, "jockey_id", 7)
+    df["jockey_last7days_n"] = jw7["_n_7"]
+    df["jockey_last7days_winrate"] = jw7["_win_7"]
+    df["jockey_last7days_top3_rate"] = jw7["_top3_7"]
+    jw3 = _rolling_window_rates(df, "jockey_id", 3)
+    df["jockey_last3days_n"] = jw3["_n_3"]
+    df["jockey_last3days_winrate"] = jw3["_win_3"]
+    # 調教師
+    tw7 = _rolling_window_rates(df, "trainer_id", 7)
+    df["trainer_last7days_n"] = tw7["_n_7"]
+    df["trainer_last7days_winrate"] = tw7["_win_7"]
+    df["trainer_last7days_top3_rate"] = tw7["_top3_7"]
+
     return df
 
 
@@ -147,14 +161,63 @@ FEATURE_COLS = [
     # 履歴
     "recent5_avg_rank", "recent5_top3_rate", "recent5_agari_avg",
     "career_n", "career_top3_rate", "days_since_last_race",
-    # 騎手・調教師
+    # 騎手・調教師 (生涯)
     "prior_n_jockey", "prior_top3_rate_jockey",
     "prior_n_trainer", "prior_top3_rate_trainer",
     # 適性
     "prior_n_course", "prior_top3_rate_course",
     "prior_n_distance", "prior_top3_rate_distance",
     "prior_n_surface", "prior_top3_rate_surface",
+    # 🆕 thisweek系（直近の勢い）
+    "jockey_last7days_n", "jockey_last7days_winrate", "jockey_last7days_top3_rate",
+    "jockey_last3days_n", "jockey_last3days_winrate",
+    "trainer_last7days_n", "trainer_last7days_winrate", "trainer_last7days_top3_rate",
 ]
+
+
+def _rolling_window_rates(df: pd.DataFrame, group_key: str, days: int) -> pd.DataFrame:
+    """指定キーごとに「過去N日間の勝率・複勝率」を計算 (自身を含まない)。
+
+    各 (date, group_key) について、その日の以前 days 日間の集計。
+    """
+    df = df.sort_values("date").copy()
+    df = df.reset_index(drop=False).rename(columns={"index": "_orig_idx"})
+    df["is_win"] = (df["rank"] == 1).astype(float)
+    df["is_top3"] = (df["rank"] <= 3).astype(float)
+
+    out = pd.DataFrame(index=df["_orig_idx"])
+    out[f"_n_{days}"] = 0
+    out[f"_win_{days}"] = 0.0
+    out[f"_top3_{days}"] = 0.0
+
+    # group_key単位で時系列にwindow集計
+    for gid, g in df.groupby(group_key):
+        if pd.isna(gid):
+            continue
+        g = g.sort_values("date").reset_index(drop=True)
+        # 各行で「自身より前」かつ「days日以内」のレースを集計
+        dates = g["date"].values
+        wins = g["is_win"].values
+        top3s = g["is_top3"].values
+        n_arr = []
+        w_arr = []
+        t_arr = []
+        for i, d in enumerate(dates):
+            # 過去days日以内、自身を除く
+            lo = d - pd.Timedelta(days=days)
+            mask = (dates >= lo) & (dates < d)
+            n = int(mask.sum())
+            n_arr.append(n)
+            if n > 0:
+                w_arr.append(float(wins[mask].sum()) / n)
+                t_arr.append(float(top3s[mask].sum()) / n)
+            else:
+                w_arr.append(0.0)
+                t_arr.append(0.0)
+        out.loc[g["_orig_idx"], f"_n_{days}"] = n_arr
+        out.loc[g["_orig_idx"], f"_win_{days}"] = w_arr
+        out.loc[g["_orig_idx"], f"_top3_{days}"] = t_arr
+    return out
 
 
 def build_training_frame(cutoff_date: Optional[str] = None) -> tuple[pd.DataFrame, pd.Series]:

@@ -29,6 +29,12 @@ SYSTEM_PROMPT = """あなたは熟練の競馬予想家。
 
 各馬のp_top3は3着内に入る確率(0.0〜1.0)。馬場状態・天候・脚質も加味する。
 
+【根拠の書き方 (約500字)】:
+1. 全体観: コース・距離・馬場条件と展開予想 (100字)
+2. 軸馬の選定理由: 軸馬の特徴・前走実績・適性 (150字)
+3. 相手馬の選定: 2-3着候補の理由 (150字)
+4. 穴狙いの根拠: 中穴を絡めた点の妙味 (100字)
+
 必ず以下のJSON形式のみで応答し、前後に説明文を付けない:
 
 {
@@ -39,7 +45,7 @@ SYSTEM_PROMPT = """あなたは熟練の競馬予想家。
     "umaban-umaban-umaban",
     "umaban-umaban-umaban"
   ],
-  "rationale": "全体の根拠を300字程度で",
+  "rationale": "全体の根拠を約500字で(4セクション構成)",
   "confidence": 0.0
 }
 """
@@ -63,7 +69,7 @@ def _format_horse_table(horses: pd.DataFrame) -> str:
     return horses[cols].to_csv(index=False)
 
 
-def build_user_prompt(race_meta: dict, horses: pd.DataFrame) -> str:
+def build_user_prompt(race_meta: dict, horses: pd.DataFrame, extra_context: str = "") -> str:
     parts = [
         f"レース: {race_meta.get('race_name', '')} ({race_meta.get('grade', '')})",
         f"日付: {race_meta.get('date', '')}",
@@ -73,6 +79,8 @@ def build_user_prompt(race_meta: dict, horses: pd.DataFrame) -> str:
         "出走馬テーブル (CSV):",
         _format_horse_table(horses),
     ]
+    if extra_context:
+        parts.extend(["", "--- 追加コンテキスト ---", extra_context])
     return "\n".join(parts)
 
 
@@ -83,8 +91,8 @@ def _extract_json(text: str) -> dict:
     return json.loads(m.group(0))
 
 
-def predict_trifecta(race_meta: dict, horses: pd.DataFrame) -> TrifectaPrediction:
-    user = build_user_prompt(race_meta, horses)
+def predict_trifecta(race_meta: dict, horses: pd.DataFrame, extra_context: str = "") -> TrifectaPrediction:
+    user = build_user_prompt(race_meta, horses, extra_context=extra_context)
     raw = complete(SYSTEM_PROMPT, user, max_tokens=2000)
     obj = _extract_json(raw)
     picks = obj.get("picks") or []

@@ -119,3 +119,68 @@ CREATE TABLE IF NOT EXISTS chat_reflections (
     prompt_diff  TEXT,             -- 推論プロンプト改善差分
     derived_n    INTEGER           -- 元になった会話turn数
 );
+
+-- ========== 統合ナレッジDB: 仮説・実験・セッション・判断 ==========
+
+-- Claude Code セッション（私とユーザーの会話セッション）
+CREATE TABLE IF NOT EXISTS code_sessions (
+    session_id     TEXT PRIMARY KEY,
+    started        TEXT,
+    ended          TEXT,
+    n_turns        INTEGER,
+    n_tool_calls   INTEGER,
+    topic_summary  TEXT,
+    key_decisions  TEXT,   -- JSON array
+    files_modified TEXT,   -- JSON array
+    jsonl_path     TEXT,
+    ingested_at    TEXT DEFAULT (datetime('now'))
+);
+
+-- AI が立てた仮説（予測戦略・特徴量・UX 等）
+CREATE TABLE IF NOT EXISTS ai_hypotheses (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at   TEXT DEFAULT (datetime('now')),
+    source       TEXT,        -- claude_code / vault / streamlit
+    topic        TEXT,        -- prediction-strategy / feature / ux / data-collection
+    hypothesis   TEXT NOT NULL,
+    rationale    TEXT,
+    confidence   REAL,
+    validated_by INTEGER,     -- experiments.id
+    outcome      TEXT,        -- proven / refuted / pending
+    session_id   TEXT,
+    FOREIGN KEY (session_id) REFERENCES code_sessions(session_id)
+);
+
+-- 実験記録（再学習・特徴量追加・プロンプト改善 等）
+CREATE TABLE IF NOT EXISTS experiments (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at   TEXT DEFAULT (datetime('now')),
+    type         TEXT,        -- retrain / feature / prompt / scrape
+    description  TEXT,
+    before_metric REAL,
+    after_metric  REAL,
+    delta         REAL,
+    metric_name   TEXT,       -- auc / hit_rate_5 / logloss
+    config_json   TEXT,
+    notes         TEXT,
+    session_id    TEXT
+);
+
+-- 設計判断ログ（なぜそう決めたか）
+CREATE TABLE IF NOT EXISTS decisions (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts           TEXT DEFAULT (datetime('now')),
+    topic        TEXT,
+    decision     TEXT NOT NULL,
+    alternatives TEXT,
+    reasoning    TEXT,
+    confidence   REAL,
+    revisited    INTEGER DEFAULT 0,
+    session_id   TEXT,
+    FOREIGN KEY (session_id) REFERENCES code_sessions(session_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_hypotheses_topic ON ai_hypotheses(topic);
+CREATE INDEX IF NOT EXISTS idx_experiments_type ON experiments(type);
+CREATE INDEX IF NOT EXISTS idx_decisions_topic ON decisions(topic);
+CREATE INDEX IF NOT EXISTS idx_sessions_started ON code_sessions(started);
