@@ -907,6 +907,39 @@ with tab_predict:
         st.write("")
         go = st.button("予測実行", type="primary", use_container_width=True)
 
+    # 推論モード設定 (予測実行前から見える位置)
+    if "rag_unlocked" not in st.session_state:
+        st.session_state.rag_unlocked = False
+
+    mode_col1, mode_col2 = st.columns([1, 1])
+    with mode_col1:
+        _claude_available_top = bool(os.environ.get("ANTHROPIC_API_KEY"))
+        use_claude_top = st.checkbox(
+            "🤖 Claude推論を使う",
+            value=_claude_available_top,
+            disabled=not _claude_available_top,
+            key="use_claude_master",
+            help="文脈解釈で命中率底上げ。1レース約10-15円",
+        )
+    with mode_col2:
+        if not st.session_state.rag_unlocked:
+            with st.expander("🔒 本気予測モード (要パスコード)"):
+                rag_pass = st.text_input("パスコード", type="password", key="rag_pass_input_top")
+                if rag_pass:
+                    if rag_pass == "keiba12":
+                        st.session_state.rag_unlocked = True
+                        st.rerun()
+                    else:
+                        st.error("パスコードが違います")
+        else:
+            rag_mode_top = st.checkbox(
+                "🎯 本気予測モード (Agentic RAG)",
+                value=False,
+                disabled=not (_claude_available_top and use_claude_top),
+                key="rag_mode_master",
+                help="Web検索+ナレッジDB横断。100-200円、30-60秒",
+            )
+
     st.markdown('<div class="section-num">02 ・ SEARCH FROM 6,300+ RACES</div>', unsafe_allow_html=True)
     st.markdown("**🔍 レース検索**")
     races = db_races_df()
@@ -1047,14 +1080,9 @@ with tab_predict:
             "course": meta.course, "distance": meta.distance, "surface": meta.surface,
             "weather": meta.weather, "track_cond": meta.track_cond,
         }
-        # API key 有効時は Claude推論を デフォルトON (安田記念本番モード)
+        # 上部のマスターチェックボックスの状態を取得 (重複表示を避ける)
         _claude_available = bool(os.environ.get("ANTHROPIC_API_KEY"))
-        use_claude = st.checkbox(
-            "🤖 Claude推論で5点を組立 (推奨)",
-            value=_claude_available,
-            disabled=not _claude_available,
-            help="文脈解釈で命中率を底上げ。1レースあたり約10-15円のAPI料金。チェック外すとLightGBM単独",
-        )
+        use_claude = st.session_state.get("use_claude_master", _claude_available)
         # 1) 常時: 過去の推論ログ + 検証済仮説を context に注入 (継続学習)
         reasoning_log = get_recent_reasoning(limit=8, race_meta=race_meta_dict)
         validated_hyp = get_validated_hypotheses(limit=5)
@@ -1066,28 +1094,8 @@ with tab_predict:
         if reasoning_log:
             st.caption("🧠 過去の推論ログ8件 を継続学習として反映中")
 
-        # 2) 本気予測モード: パスコード解錠制
-        if "rag_unlocked" not in st.session_state:
-            st.session_state.rag_unlocked = False
-
-        if not st.session_state.rag_unlocked:
-            with st.expander("🔒 本気予測モード解錠"):
-                rag_pass = st.text_input("パスコード", type="password", key="rag_pass_input")
-                if rag_pass:
-                    if rag_pass == "keiba12":
-                        st.session_state.rag_unlocked = True
-                        st.rerun()
-                    else:
-                        st.error("パスコードが違います")
-        else:
-            st.success("✓ 本気予測モード 解錠済み")
-
-        rag_mode = st.checkbox(
-            "🎯 本気予測モード (Agentic RAG)",
-            value=False,
-            disabled=not (_claude_available and use_claude and st.session_state.rag_unlocked),
-            help="🔒解錠コード必要。Web検索+ナレッジDB横断でClaude推論を強化。1回100-200円、30-60秒",
-        )
+        # 上部マスターから設定取得 (重複UI排除)
+        rag_mode = st.session_state.get("rag_mode_master", False) and st.session_state.rag_unlocked
 
         claude_pred = None
         rag_ctx = None
