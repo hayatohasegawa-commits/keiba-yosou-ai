@@ -867,6 +867,23 @@ with tab_today:
 
 
 with tab_predict:
+    st.markdown(
+        """
+        <div style="background:linear-gradient(135deg,rgba(212,175,55,0.08),rgba(16,185,129,0.04));
+                    border:1px solid rgba(212,175,55,0.2); border-radius:14px; padding:18px 22px; margin:12px 0 20px;">
+          <div style="font-family:'SF Mono',monospace; color:#d4af37; font-size:0.8rem; letter-spacing:0.15em;">QUICK START</div>
+          <div style="font-weight:700; font-size:1.2rem; color:#f5f5f7; margin:6px 0 8px;">
+            3ステップで予測完了
+          </div>
+          <div style="color:#a1a1aa; line-height:1.7;">
+            <span style="color:#10b981;">①</span> 下の検索or注目レースからレース選択
+            ・ <span style="color:#d4af37;">②</span> 「予測実行」を押す
+            ・ <span style="color:#f4d976;">③</span> 5点予想 + 期待払戻が表示
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.subheader("レース指定")
 
     if "race_id_text" not in st.session_state:
@@ -1028,13 +1045,25 @@ with tab_predict:
     if go and race_id_input:
         with st.spinner(f"netkeibaから取得中: {race_id_input}"):
             try:
+                # キャッシュをクリアして最新を取りに行く (今日のレース対応)
+                fetch_race.clear()
                 data = fetch_race(race_id_input)
             except Exception as e:  # noqa: BLE001
                 st.error(f"取得失敗: {e}")
                 st.stop()
 
         meta = data.meta
-        st.success(f"取得成功: {meta.race_name or race_id_input}")
+        if not data.results:
+            st.error(
+                f"❌ 出馬表/レース結果が取得できません ({race_id_input})\n\n"
+                "考えられる原因:\n"
+                "- 未開催のレース (出馬表が金曜まで公開されない)\n"
+                "- 海外レース or 地方競馬の特殊コース\n"
+                "- race_id の入力ミス (12桁の数字)\n\n"
+                "**「📅 今日の予測」タブ または 「📊 DBレース閲覧」タブから既存レースを選ぶのも便利です。**"
+            )
+            st.stop()
+        st.success(f"✓ 取得成功: {meta.race_name or race_id_input} ({len(data.results)}頭)")
 
         m1, m2, m3, m4, m5 = st.columns(5)
         m1.metric("開催日", meta.date or "—")

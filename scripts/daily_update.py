@@ -62,30 +62,42 @@ def main() -> int:
     cache = netkeiba.build_cache()
 
     today = date.today()
-    target_dates = [today - timedelta(days=d) for d in range(1, 4)]
+    # 過去3日 + 今日 + 明日
+    target_dates = [today - timedelta(days=d) for d in range(1, 4)] + [today, today + timedelta(days=1)]
     log.info("daily update for: %s", [d.isoformat() for d in target_dates])
 
     existing = set(_existing_race_ids())
     new_count = 0
+    refreshed_count = 0
     err_count = 0
+    skipped = 0
 
     for d in target_dates:
         ids = extract_race_ids_for_date(d.strftime("%Y%m%d"), cache)
         log.info("%s: %d races found", d, len(ids))
+        # 今日と明日は強制更新 (オッズ・出馬表変更・取消し対応)
+        force_refresh = d >= today
         for rid, name in ids.items():
-            if rid in existing:
+            if rid in existing and not force_refresh:
+                skipped += 1
                 continue
             try:
-                data = netkeiba.fetch_and_parse_race(rid, cache=cache)
+                data = netkeiba.fetch_and_parse_race(rid, cache=cache, force=force_refresh)
                 if data.results:
                     repo.save_race_data(data)
-                    new_count += 1
-                    log.info("saved %s: %s (%d horses)", rid, data.meta.race_name or name, len(data.results))
+                    if rid in existing:
+                        refreshed_count += 1
+                    else:
+                        new_count += 1
+                        existing.add(rid)
+                    if (new_count + refreshed_count) % 10 == 0:
+                        log.info("progress new=%d refreshed=%d", new_count, refreshed_count)
             except Exception as e:  # noqa: BLE001
                 err_count += 1
                 log.warning("fetch failed %s (%s): %s", rid, name, e)
 
-    log.info("done. new=%d, errors=%d, total in DB=%d", new_count, err_count, repo.race_count())
+    log.info("done. new=%d, refreshed=%d, skipped=%d, errors=%d, total in DB=%d",
+             new_count, refreshed_count, skipped, err_count, repo.race_count())
     return 0
 
 

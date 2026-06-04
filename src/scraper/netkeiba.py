@@ -263,11 +263,17 @@ def parse_results(html: str, race_id: str) -> list[ResultRow]:
     return rows
 
 
-def fetch_and_parse_race(race_id: str, cache: Optional[RateLimitedCache] = None) -> RaceData:
+def fetch_and_parse_race(race_id: str, cache: Optional[RateLimitedCache] = None, force: bool = False) -> RaceData:
     cache = cache or build_cache()
-    html = fetch_race_html(race_id, cache)
+    url = NETKEIBA_RACE_URL.format(race_id=race_id)
+    html = cache.get(url, encoding="EUC-JP", force=force)
     meta = parse_race_meta(html, race_id)
     results = parse_results(html, race_id)
+    # 空結果ならキャッシュ更新でリトライ (pre-race版を掴んでいる場合の対策)
+    if not results and not force:
+        html = cache.get(url, encoding="EUC-JP", force=True)
+        meta = parse_race_meta(html, race_id)
+        results = parse_results(html, race_id)
     meta.starters = len(results)
     return RaceData(meta=meta, results=results)
 
