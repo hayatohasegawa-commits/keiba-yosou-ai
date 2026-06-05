@@ -223,11 +223,57 @@ def build_betplan(race_id: str, entries_df):
     return build_bets(pairs), source, ranked
 
 
+def process_race(rid: str, date: _dt.date, place: str, bet: str) -> bool:
+    """1レースを予測してDB保存。成功でTrue。"""
+    import pandas as pd
+    from src.reasoning.bet_builder import rationale as bet_rationale
+    data = fetch_shutuba_race(rid, date, place)
+    if not data or not data.results:
+        print("出馬表取得できず（未確定/非開催）")
+        return False
+
+    # DBへ出走馬を保存（rank=NULL）→ LightGBM が使えるように
+    repo.save_race_data(data)
+
+    entries_df = pd.DataFrame([r.__dict__ for r in data.results])
+    plan, source, ranked = build_betplan(rid, entries_df)
+    if plan.axis is None:
+        print(f"予測組成できず（{len(data.results)}頭・{source}）")
+        return False
+
+    names, probs = {}, {}
+    for r in ranked.head(6).itertuples():
+        if pd.notna(getattr(r, "horse_number", None)):
+            names[int(r.horse_number)] = getattr(r, "horse_name", "") or ""
+            probs[int(r.horse_number)] = float(getattr(r, "p_top3", 0) or 0)
+
+    if bet == "sanrenpuku":
+        save_picks = plan.sanrenpuku_box4
+        mv = "sanpuku_box4_lgbm" if source == "LightGBM" else "sanpuku_box4_pop"
+    else:
+        save_picks = plan.sanrentan_main + plan.sanrentan_nagashi[:3]
+        mv = "lgbm_latest" if source == "LightGBM" else "popularity_v1"
+
+    repo.insert_prediction(
+        race_id=rid, picks=save_picks,
+        rationale=bet_rationale(plan, names, probs),
+        confidence=probs.get(plan.axis, 0.4),
+        model_version=mv,
+    )
+    print(f"✓ {data.meta.race_name or ''} {len(data.results)}頭 / {source} / "
+          f"軸{plan.axis}")
+    print(f"   3連複BOX4: {' / '.join(plan.sanrenpuku_box4)}")
+    print(f"   3連複軸流し6: {' / '.join(plan.sanrenpuku_axis)}")
+    print(f"   3連単本線: {' / '.join(plan.sanrentan_main)}")
+    return True
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--date", default=None, help="YYYY-MM-DD (省略時は今日)")
     parser.add_argument("--place", default="名古屋")
     parser.add_argument("--races", default="1-12", help="例: 1-12 や 8-12")
+    parser.add_argument("--race-id", default=None, help="race_id直指定（中央単発レース用）")
     parser.add_argument("--bet", default="sanrenpuku", choices=["sanrentan", "sanrenpuku"],
                         help="DB保存する馬券種（既定:3連複 / 検証でROIプラス）")
     parser.add_argument("--verbose", action="store_true")
@@ -238,10 +284,14 @@ def main() -> None:
         format="%(asctime)s %(levelname)s | %(message)s",
     )
 
-    if args.date:
-        date = _dt.date.fromisoformat(args.date)
-    else:
-        date = _dt.date.today()
+    date = _dt.date.fromisoformat(args.date) if args.date else _dt.date.today()
+
+    # race_id直指定モード（中央G1など）
+    if args.race_id:
+        print(f"=== {args.race_id} 単発予測 ({args.place}) ===\n")
+        ok = process_race(args.race_id, date, args.place, args.bet)
+        print(f"\n完了: {'成功' if ok else '失敗'}")
+        return
 
     lo, hi = (int(x) for x in args.races.split("-")) if "-" in args.races else (int(args.races), int(args.races))
 
@@ -250,48 +300,10 @@ def main() -> None:
     for rno in range(lo, hi + 1):
         rid = build_race_id(date, args.place, rno)
         print(f"[R{rno:>2}] {rid} ... ", end="", flush=True)
-        data = fetch_shutuba_race(rid, date, args.place)
-        if not data or not data.results:
-            print("出馬表取得できず（未確定/非開催）")
-            ng += 1
-            continue
-
-        # DBへ出走馬を保存（rank=NULL）→ LightGBM が使えるように
-        repo.save_race_data(data)
-
-        import pandas as pd
-        from src.reasoning.bet_builder import rationale as bet_rationale
-        entries_df = pd.DataFrame([r.__dict__ for r in data.results])
-        plan, source, ranked = build_betplan(rid, entries_df)
-        if plan.axis is None:
-            print(f"予測組成できず（{len(data.results)}頭・{source}）")
-            ng += 1
-            continue
-
-        # 名前/確率の辞書（根拠用）
-        names, probs = {}, {}
-        for r in ranked.head(6).itertuples():
-            if pd.notna(getattr(r, "horse_number", None)):
-                names[int(r.horse_number)] = getattr(r, "horse_name", "") or ""
-                probs[int(r.horse_number)] = float(getattr(r, "p_top3", 0) or 0)
-
-        # 保存する馬券種を選択（既定: 3連複 上位4頭BOX 4点）
-        if args.bet == "sanrenpuku":
-            save_picks = plan.sanrenpuku_box4
-            mv = "sanpuku_box4_lgbm" if source == "LightGBM" else "sanpuku_box4_pop"
+        if process_race(rid, date, args.place, args.bet):
+            ok += 1
         else:
-            save_picks = plan.sanrentan_main + plan.sanrentan_nagashi[:3]
-            mv = "lgbm_latest" if source == "LightGBM" else "popularity_v1"
-
-        repo.insert_prediction(
-            race_id=rid, picks=save_picks,
-            rationale=bet_rationale(plan, names, probs),
-            confidence=probs.get(plan.axis, 0.4),
-            model_version=mv,
-        )
-        print(f"✓ {data.meta.race_name or ''} {len(data.results)}頭 / {source} / "
-              f"軸{plan.axis} / 3連複BOX4: {' '.join(plan.sanrenpuku_box4)}")
-        ok += 1
+            ng += 1
         time.sleep(0.6)
 
     print(f"\n完了: 成功 {ok}R / 失敗 {ng}R")
