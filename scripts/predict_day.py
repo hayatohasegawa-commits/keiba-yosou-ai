@@ -188,8 +188,8 @@ def _build_5(ranked) -> tuple[list[str], str, float]:
     return picks, rationale, conf
 
 
-def build_trifecta(race_id: str, entries_df) -> tuple[list[str], str, float, str]:
-    """LightGBM 確率で 5点（1着固定流し）を組む。失敗時は人気・オッズで。"""
+def _ranked_horses(race_id: str, entries_df):
+    """LightGBM(失敗時は人気)で確率降順の ranked DF と source を返す。"""
     source = "LightGBM"
     ranked = None
     try:
@@ -204,9 +204,23 @@ def build_trifecta(race_id: str, entries_df) -> tuple[list[str], str, float, str
     if ranked is None or "p_top3" not in ranked.columns or ranked["p_top3"].isna().all():
         source = "人気・オッズベース"
         ranked = _simple_top3(entries_df)
+    return ranked, source
 
+
+def build_trifecta(race_id: str, entries_df) -> tuple[list[str], str, float, str]:
+    """LightGBM 確率で 5点（1着固定流し）を組む。失敗時は人気・オッズで。"""
+    ranked, source = _ranked_horses(race_id, entries_df)
     picks, rationale, conf = _build_5(ranked)
     return picks, rationale, conf, source
+
+
+def build_betplan(race_id: str, entries_df):
+    """bet_builder で 3連単/3連複 をまとめて組む。返り値 (BetPlan, source, ranked_df)。"""
+    from src.reasoning.bet_builder import build_bets
+    ranked, source = _ranked_horses(race_id, entries_df)
+    top = ranked.dropna(subset=["horse_number"]).head(6)
+    pairs = [(int(r.horse_number), float(getattr(r, "p_top3", 0) or 0)) for r in top.itertuples()]
+    return build_bets(pairs), source, ranked
 
 
 def main() -> None:
@@ -214,6 +228,8 @@ def main() -> None:
     parser.add_argument("--date", default=None, help="YYYY-MM-DD (省略時は今日)")
     parser.add_argument("--place", default="名古屋")
     parser.add_argument("--races", default="1-12", help="例: 1-12 や 8-12")
+    parser.add_argument("--bet", default="sanrenpuku", choices=["sanrentan", "sanrenpuku"],
+                        help="DB保存する馬券種（既定:3連複 / 検証でROIプラス）")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -244,19 +260,37 @@ def main() -> None:
         repo.save_race_data(data)
 
         import pandas as pd
+        from src.reasoning.bet_builder import rationale as bet_rationale
         entries_df = pd.DataFrame([r.__dict__ for r in data.results])
-        picks, rationale, conf, source = build_trifecta(rid, entries_df)
-        if not picks:
+        plan, source, ranked = build_betplan(rid, entries_df)
+        if plan.axis is None:
             print(f"予測組成できず（{len(data.results)}頭・{source}）")
             ng += 1
             continue
 
+        # 名前/確率の辞書（根拠用）
+        names, probs = {}, {}
+        for r in ranked.head(6).itertuples():
+            if pd.notna(getattr(r, "horse_number", None)):
+                names[int(r.horse_number)] = getattr(r, "horse_name", "") or ""
+                probs[int(r.horse_number)] = float(getattr(r, "p_top3", 0) or 0)
+
+        # 保存する馬券種を選択（既定: 3連複 上位4頭BOX 4点）
+        if args.bet == "sanrenpuku":
+            save_picks = plan.sanrenpuku_box4
+            mv = "sanpuku_box4_lgbm" if source == "LightGBM" else "sanpuku_box4_pop"
+        else:
+            save_picks = plan.sanrentan_main + plan.sanrentan_nagashi[:3]
+            mv = "lgbm_latest" if source == "LightGBM" else "popularity_v1"
+
         repo.insert_prediction(
-            race_id=rid, picks=picks, rationale=rationale,
-            confidence=conf,
-            model_version="lgbm_latest" if source == "LightGBM" else "popularity_v1",
+            race_id=rid, picks=save_picks,
+            rationale=bet_rationale(plan, names, probs),
+            confidence=probs.get(plan.axis, 0.4),
+            model_version=mv,
         )
-        print(f"✓ {data.meta.race_name or ''} {len(data.results)}頭 / {source} / {picks[0]} 他{len(picks)-1}点")
+        print(f"✓ {data.meta.race_name or ''} {len(data.results)}頭 / {source} / "
+              f"軸{plan.axis} / 3連複BOX4: {' '.join(plan.sanrenpuku_box4)}")
         ok += 1
         time.sleep(0.6)
 
