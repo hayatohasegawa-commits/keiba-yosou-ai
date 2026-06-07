@@ -79,8 +79,13 @@ def fetch_shutuba_race(race_id: str, date: _dt.date, place: str) -> RaceData | N
             meta = RaceMeta(race_id=race_id, date=date.strftime("%Y-%m-%d"), course=place)
             meta.race_number = int(race_id[-2:])
             name_el = soup.select_one("div.RaceName") or soup.select_one("h1")
-            if name_el:
+            if name_el and name_el.get_text(strip=True):
                 meta.race_name = name_el.get_text(strip=True)
+            else:
+                # 中央はRaceNameがJS生成で空 → <title>から補完
+                title = soup.select_one("title")
+                if title:
+                    meta.race_name = title.get_text(strip=True).split("|")[0].replace("出馬表", "").strip()
             data01 = soup.select_one("div.RaceData01")
             if data01:
                 txt = data01.get_text(" ", strip=True)

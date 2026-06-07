@@ -53,3 +53,55 @@ def fetch_trifecta_odds(race_id: str, timeout: int = 15) -> dict[str, float]:
 def lookup_odds_for_picks(picks: list[str], odds_map: dict[str, float]) -> list[Optional[float]]:
     """予想5点それぞれの3連単オッズを返す。未登録は None。"""
     return [odds_map.get(p) for p in picks]
+
+
+def _odds_api(race_id: str, type_: int, timeout: int = 15) -> dict:
+    try:
+        r = requests.get(
+            ODDS_API,
+            params={"race_id": race_id, "type": type_, "action": "update"},
+            headers={"User-Agent": "Mozilla/5.0",
+                     "Referer": f"https://race.netkeiba.com/odds/index.html?race_id={race_id}"},
+            timeout=timeout,
+        )
+        r.raise_for_status()
+        return r.json().get("data", {}) or {}
+    except Exception:
+        return {}
+
+
+def fetch_win_odds(race_id: str, timeout: int = 15) -> dict[int, tuple[float, int]]:
+    """単勝オッズと人気を取得。{馬番: (単勝倍率, 人気)}。
+
+    netkeiba odds API type=1 (単勝):
+      data.odds["1"]["01"] = [odds_str, "", ninki_str]
+    中央の出馬表HTMLには単勝が載らない(JS生成)ため、予測前にこれで補完する。
+    """
+    data = _odds_api(race_id, 1, timeout)
+    block = data.get("odds", {}).get("1", {}) if isinstance(data.get("odds"), dict) else {}
+    out: dict[int, tuple[float, int]] = {}
+    for k, vals in block.items():
+        try:
+            num = int(k)
+            odds = float(str(vals[0]).replace(",", ""))
+            ninki = int(vals[2]) if len(vals) > 2 and str(vals[2]).isdigit() else 99
+            out[num] = (odds, ninki)
+        except (ValueError, IndexError, TypeError):
+            continue
+    return out
+
+
+def fetch_trio_odds(race_id: str, timeout: int = 15) -> dict[str, float]:
+    """3連複オッズを取得。キーは "2-4-5"(昇順)。type=7。"""
+    data = _odds_api(race_id, 7, timeout)
+    block = data.get("odds", {}).get("7", {}) if isinstance(data.get("odds"), dict) else {}
+    out: dict[str, float] = {}
+    for key, vals in block.items():
+        if not isinstance(key, str) or len(key) != 6:
+            continue
+        try:
+            a, b, c = sorted((int(key[0:2]), int(key[2:4]), int(key[4:6])))
+            out[f"{a}-{b}-{c}"] = float(str(vals[0]).replace(",", ""))
+        except (ValueError, IndexError, TypeError):
+            continue
+    return out
