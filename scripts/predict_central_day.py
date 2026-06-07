@@ -24,29 +24,10 @@ import pandas as pd
 
 from scripts.predict_day import fetch_shutuba_race, _ranked_horses
 from src.scraper.odds import fetch_win_odds
-from src.reasoning.bet_builder import build_bets
+from src.reasoning.bet_builder import build_bets, sanrentan_5, sanrenpuku_5
 from src.db import repository as repo
 
 random.seed(42)
-
-
-def sanrentan_5(nums: list[int]) -> list[str]:
-    """3連単5点 1着固定流し。"""
-    if len(nums) < 4:
-        return []
-    a, b, c, d = nums[0], nums[1], nums[2], nums[3]
-    return [f"{a}-{b}-{c}", f"{a}-{c}-{b}", f"{a}-{b}-{d}", f"{a}-{d}-{b}", f"{a}-{c}-{d}"]
-
-
-def sanrenpuku_5(nums: list[int]) -> list[str]:
-    """3連複5点 = 上位4頭BOX(4) + 軸-2位-5位(1)。"""
-    if len(nums) < 4:
-        return []
-    box = ["-".join(map(str, c)) for c in itertools.combinations(nums[:4], 3)]
-    if len(nums) >= 5:
-        e = sorted((nums[0], nums[1], nums[4]))
-        box.append("-".join(map(str, e)))
-    return box
 
 
 def win_probs_from_odds(odds_map: dict[int, tuple[float, int]]) -> dict[int, float]:

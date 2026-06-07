@@ -1103,7 +1103,19 @@ with tab_predict:
             styled["p_top3"] = styled["p_top3"].round(3)
         st.dataframe(ja(styled), use_container_width=True, hide_index=True)
 
-        st.subheader("🎯 3連単5点予想")
+        # --- 馬券種セレクタ（3連単5点 / 3連複5点）---
+        from src.reasoning.bet_builder import build_bets, sanrentan_5, sanrenpuku_5
+        _top = ranked.dropna(subset=["horse_number"]).head(6)
+        _pairs = [(int(r.horse_number), float(getattr(r, "p_top3", 0) or 0)) for r in _top.itertuples()]
+        _plan = build_bets(_pairs)
+        bet_choice = st.radio(
+            "馬券種を選択（5点）", ["3連複5点", "3連単5点"], horizontal=True, key="bet_type_choice",
+            help="検証では3連複の方が的中率・回収率とも高い傾向。押した方を予想として表示・保存します。",
+        )
+        is_puku = bet_choice == "3連複5点"
+        bet_picks = sanrenpuku_5(_plan.ranked) if is_puku else sanrentan_5(_plan.ranked)
+
+        st.subheader(f"🎯 {bet_choice}予想")
         race_meta_dict = {
             "date": meta.date, "race_name": meta.race_name, "grade": meta.grade,
             "course": meta.course, "distance": meta.distance, "surface": meta.surface,
@@ -1145,22 +1157,33 @@ with tab_predict:
             except Exception as e:  # noqa: BLE001
                 st.warning(f"Claude推論に失敗: {e}")
 
+        # 根拠は Claude（あれば）か暫定モデルから流用、買い目は選択した馬券種で上書き
         if claude_pred and claude_pred.picks:
-            tri = {
-                "picks": claude_pred.picks,
-                "rationale": claude_pred.rationale,
-                "confidence": claude_pred.confidence,
-            }
-            tag = "Claude Opus 4.7 (5点)"
+            base_rationale = claude_pred.rationale
+            base_conf = claude_pred.confidence
+            tag = f"Claude Opus 4.7 + {bet_choice}"
         else:
-            tri = build_simple_trifecta(ranked)
-            tag = f"暫定モデル / {prob_source}"
+            _simple = build_simple_trifecta(ranked)
+            base_rationale = _simple["rationale"]
+            base_conf = _simple["confidence"]
+            tag = f"{prob_source} / {bet_choice}"
+
+        if bet_picks:
+            tri = {"picks": bet_picks, "rationale": base_rationale, "confidence": base_conf}
+        else:
+            # 5点を組めない（出走少）の場合は従来ロジック
+            tri = (claude_pred and {"picks": claude_pred.picks, "rationale": claude_pred.rationale,
+                                    "confidence": claude_pred.confidence}) or build_simple_trifecta(ranked)
 
         odds_map = {}
-        if st.checkbox("3連単オッズを取得して表示", value=True, key="show_odds",
+        if st.checkbox(f"{'3連複' if is_puku else '3連単'}オッズを取得して表示", value=True, key="show_odds",
                        help="netkeibaから現時点のオッズを取得（数秒）"):
             with st.spinner("オッズ取得中..."):
-                odds_map = fetch_trifecta_odds(race_id_input)
+                if is_puku:
+                    from src.scraper.odds import fetch_trio_odds
+                    odds_map = fetch_trio_odds(race_id_input)
+                else:
+                    odds_map = fetch_trifecta_odds(race_id_input)
 
         if odds_map:
             rows_html = ""
@@ -1222,22 +1245,30 @@ with tab_predict:
             actual_nums = actual_top3.sort_values("rank")["horse_number"].astype(int).tolist()
             if len(actual_nums) >= 3:
                 actual_tri = f"{actual_nums[0]}-{actual_nums[1]}-{actual_nums[2]}"
-                hit = actual_tri in set(tri["picks"])
+                if is_puku:
+                    # 3連複は順不同で判定
+                    actual_set = frozenset(actual_nums[:3])
+                    pick_sets = {frozenset(int(x) for x in p.split("-")) for p in tri["picks"]}
+                    hit = actual_set in pick_sets
+                else:
+                    hit = actual_tri in set(tri["picks"])
                 st.markdown("---")
                 st.subheader("✅ 実績照合（過去レースの場合）")
                 a, b = st.columns(2)
                 a.metric("実際の着順 (1-2-3)", actual_tri)
-                b.metric("5点的中", "🎉 的中!" if hit else "❌ 不的中")
+                b.metric(f"{bet_choice}的中", "🎉 的中!" if hit else "❌ 不的中")
 
-        if st.button("予測をDB保存"):
+        if st.button(f"この{bet_choice}をDB保存"):
+            _bt = "sanpuku5" if is_puku else "sanrentan5"
+            _src = "lgbm" if prob_source == "LightGBM" else ("claude" if claude_pred else "simple")
             pred_id = repo.insert_prediction(
                 race_id=race_id_input,
                 picks=tri["picks"],
                 rationale=tri["rationale"],
                 confidence=tri["confidence"],
-                model_version="lgbm_v1" if prob_source == "LightGBM" else ("claude_v1" if claude_pred else "simple_v1"),
+                model_version=f"{_bt}_{_src}",
             )
-            st.success(f"DB保存完了 (prediction_id={pred_id})")
+            st.success(f"DB保存完了 ({bet_choice} / prediction_id={pred_id})")
 
 
 with tab_db:

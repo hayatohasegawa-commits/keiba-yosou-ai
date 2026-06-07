@@ -68,6 +68,30 @@ def build_bets(ranked: list[tuple[int, float]]) -> BetPlan:
     return plan
 
 
+def sanrentan_5(nums: list[int]) -> list[str]:
+    """3連単5点 1着固定流し（軸=確率1位を1着固定）。"""
+    if len(nums) < 4:
+        return []
+    a, b, c, d = nums[0], nums[1], nums[2], nums[3]
+    return [f"{a}-{b}-{c}", f"{a}-{c}-{b}", f"{a}-{b}-{d}", f"{a}-{d}-{b}", f"{a}-{c}-{d}"]
+
+
+def sanrenpuku_5(nums: list[int]) -> list[str]:
+    """3連複5点 = 上位4頭BOX(4点) + 軸-2位-5位(1点)。各点は馬番昇順（3連複の標準表記）。"""
+    if len(nums) < 4:
+        return []
+    box = ["-".join(map(str, sorted(c))) for c in itertools.combinations(nums[:4], 3)]
+    if len(nums) >= 5:
+        box.append("-".join(map(str, sorted((nums[0], nums[1], nums[4])))))
+    return box
+
+
+def picks_5(plan: BetPlan, bet_type: str) -> list[str]:
+    """馬券種に応じた「5点」を返す。bet_type: 'sanrentan' | 'sanrenpuku'。"""
+    nums = plan.ranked
+    return sanrentan_5(nums) if bet_type == "sanrentan" else sanrenpuku_5(nums)
+
+
 def rationale(plan: BetPlan, names: Optional[dict[int, str]] = None,
               probs: Optional[dict[int, float]] = None) -> str:
     """買い目の根拠テキストを生成。"""
