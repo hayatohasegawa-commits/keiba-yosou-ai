@@ -1130,17 +1130,28 @@ with tab_predict:
             styled["p_top3"] = styled["p_top3"].round(3)
         st.dataframe(ja(styled), use_container_width=True, hide_index=True)
 
-        # --- 馬券種セレクタ（3連単5点 / 3連複5点）---
-        from src.reasoning.bet_builder import build_bets, sanrentan_5, sanrenpuku_5
+        # --- 馬券種セレクタ（3連複おすすめ動的 / 3連複5点 / 3連単5点）---
+        from src.reasoning.bet_builder import build_bets, sanrentan_5, sanrenpuku_5, recommend_sanrenpuku
         _top = ranked.dropna(subset=["horse_number"]).head(6)
         _pairs = [(int(r.horse_number), float(getattr(r, "p_top3", 0) or 0)) for r in _top.itertuples()]
         _plan = build_bets(_pairs)
+        _reco = recommend_sanrenpuku(_pairs)  # 軸信頼度で点数可変・較正確率ベース
         bet_choice = st.radio(
-            "馬券種を選択（5点）", ["3連複5点", "3連単5点"], horizontal=True, key="bet_type_choice",
-            help="検証では3連複の方が的中率・回収率とも高い傾向。押した方を予想として表示・保存します。",
+            "馬券種を選択", ["3連複おすすめ(動的)", "3連複5点", "3連単5点"], horizontal=True,
+            key="bet_type_choice",
+            help="おすすめ=軸の信頼度で買い方を自動最適化（断然なら軸固定-相手5頭ながし／拮抗なら5頭BOX）。較正済み確率を使用。",
         )
-        is_puku = bet_choice == "3連複5点"
-        bet_picks = sanrenpuku_5(_plan.ranked) if is_puku else sanrentan_5(_plan.ranked)
+        is_puku = bet_choice != "3連単5点"
+        if bet_choice == "3連複おすすめ(動的)":
+            bet_picks = _reco.picks
+            st.caption(f"🧠 動的フォーメーション: **{_reco.name}**（{_reco.n_points}点）・"
+                       f"軸{_reco.axis}の信頼度 {_reco.axis_conf:.0%}  — {_reco.note}")
+            if _reco.skip:
+                st.warning("⚠️ 上位が団子のレース。妙味が薄いため【見送り】も選択肢です。")
+        elif bet_choice == "3連複5点":
+            bet_picks = sanrenpuku_5(_plan.ranked)
+        else:
+            bet_picks = sanrentan_5(_plan.ranked)
 
         st.subheader(f"🎯 {bet_choice}予想")
         race_meta_dict = {
@@ -1242,8 +1253,9 @@ with tab_predict:
             st.markdown(f'<div style="background:#fff; padding:8px 16px; border-radius:6px;">{rows_html}</div>', unsafe_allow_html=True)
 
             avg_payout = total_expected / max(1, len([p for p in tri["picks"] if odds_map.get(p) is not None]))
+            _npts = len(tri["picks"])
             m1, m2, m3 = st.columns(3)
-            m1.metric("購入コスト", "500円", help="5点×100円")
+            m1.metric("購入コスト", f"{_npts*100:,}円", help=f"{_npts}点×100円")
             m2.metric("最大期待払戻", f"{max_expected:,.0f}円")
             m3.metric("平均期待払戻", f"{avg_payout:,.0f}円")
         else:

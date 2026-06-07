@@ -38,6 +38,25 @@ def load_model(custom: Optional[Path] = None) -> dict:
     return bundle
 
 
+_CALIBRATOR_CACHE: dict = {}
+
+
+def load_calibrator() -> Optional[object]:
+    """較正器(Isotonic)があれば返す。無ければNone。"""
+    if "iso" in _CALIBRATOR_CACHE:
+        return _CALIBRATOR_CACHE["iso"]
+    p = PROJECT_ROOT / "models" / "calibrator_latest.pkl"
+    iso = None
+    if p.exists():
+        try:
+            with p.open("rb") as f:
+                iso = pickle.load(f).get("isotonic")
+        except Exception:
+            iso = None
+    _CALIBRATOR_CACHE["iso"] = iso
+    return iso
+
+
 def predict_top3_probabilities(race_id: str, model: Optional[dict] = None) -> pd.DataFrame:
     """指定レースの各馬の3着内確率(p_top3)を返す。
 
@@ -53,7 +72,10 @@ def predict_top3_probabilities(race_id: str, model: Optional[dict] = None) -> pd
     X = X.fillna(0)
     p = model["booster"].predict(X)
     feats = feats.copy()
-    feats["p_top3"] = p
+    feats["p_top3_raw"] = p
+    # 較正器があれば実測3着内率に補正（単調なので順位は不変、値が信頼できる）
+    iso = load_calibrator()
+    feats["p_top3"] = iso.predict(p) if iso is not None else p
 
     # 馬名を付与
     horse_ids = feats["horse_id"].tolist()

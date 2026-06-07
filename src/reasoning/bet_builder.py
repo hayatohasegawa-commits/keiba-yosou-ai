@@ -92,6 +92,53 @@ def picks_5(plan: BetPlan, bet_type: str) -> list[str]:
     return sanrentan_5(nums) if bet_type == "sanrentan" else sanrenpuku_5(nums)
 
 
+@dataclass
+class Formation:
+    name: str
+    picks: list[str]
+    n_points: int
+    axis: Optional[int]
+    axis_conf: float          # 軸の信頼度 = 較正確率の1位-2位の差
+    note: str = ""
+    skip: bool = False        # 団子レース=見送り推奨
+
+
+def recommend_sanrenpuku(pairs: list[tuple[int, float]]) -> Formation:
+    """較正確率(pairs=(馬番, p_cal) 降順)から、軸の信頼度で買い方を可変。
+
+    - 軸断然 (gap≥0.15): 軸1頭固定 - 相手5頭ながし (C(5,2)=10点)
+    - 標準   (0.05≤gap<0.15): 上位5頭BOX (10点)
+    - 団子   (gap<0.05): 見送り推奨。参考に上位5頭BOXを提示
+    相手を5頭目まで広げるのが基本（名古屋検証で的中率が大きく改善）。
+    """
+    nums = [int(n) for n, _ in pairs]
+    ps = [float(p) for _, p in pairs]
+    if len(nums) < 4:
+        return Formation("点数不足", [], 0, nums[0] if nums else None, 0.0,
+                         "出走/取得が少なく組成不可", skip=True)
+    axis = nums[0]
+    gap = ps[0] - ps[1]
+
+    def box(horses: list[int]) -> list[str]:
+        return ["-".join(map(str, sorted(c))) for c in itertools.combinations(horses, 3)]
+
+    if gap >= 0.15:
+        partners = nums[1:6]                       # 相手 最大5頭
+        picks = ["-".join(map(str, sorted((axis, x, y))))
+                 for x, y in itertools.combinations(partners, 2)]
+        return Formation("軸1頭固定-相手5頭ながし", picks, len(picks), axis, gap,
+                         f"軸{axis}が断然(確率差{gap:.0%})。軸を固定し相手を広く取る型。")
+    elif gap >= 0.05:
+        picks = box(nums[:5])                       # 上位5頭BOX
+        return Formation("上位5頭BOX", picks, len(picks), axis, gap,
+                         f"上位拮抗(確率差{gap:.0%})。5頭BOXで取りこぼしを防ぐ。")
+    else:
+        picks = box(nums[:5])
+        return Formation("上位5頭BOX(見送り推奨)", picks, len(picks), axis, gap,
+                         f"超団子(確率差{gap:.0%})。妙味薄く見送り推奨。買うなら5頭BOX。",
+                         skip=True)
+
+
 def rationale(plan: BetPlan, names: Optional[dict[int, str]] = None,
               probs: Optional[dict[int, float]] = None) -> str:
     """買い目の根拠テキストを生成。"""
