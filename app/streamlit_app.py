@@ -626,6 +626,18 @@ def db_results_df(race_id: str) -> pd.DataFrame:
         )
 
 
+def _saved_prediction(race_id: str) -> dict | None:
+    """DBに保存済みの最新予測を取得（ライブ取得失敗時のフォールバック用）。"""
+    with sqlite3.connect(repo.db_path()) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT p.*, (SELECT race_name FROM races r WHERE r.race_id=p.race_id) AS race_name "
+            "FROM predictions p WHERE p.race_id=? ORDER BY p.id DESC LIMIT 1",
+            (race_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def db_predictions_df() -> pd.DataFrame:
     with sqlite3.connect(repo.db_path()) as conn:
         return pd.read_sql_query(
@@ -1049,18 +1061,33 @@ with tab_predict:
                 fetch_race.clear()
                 data = fetch_race(race_id_input)
             except Exception as e:  # noqa: BLE001
-                st.error(f"取得失敗: {e}")
-                st.stop()
+                data = None
+                st.warning(f"netkeiba取得に失敗: {e}")
 
-        meta = data.meta
-        if not data.results:
+        meta = data.meta if data else None
+        if not data or not data.results:
+            # スクレイピング不可（例: Streamlit Cloudでの制限）の場合、
+            # DBに保存済みの予測があればそれを表示してフォールバック
+            saved = _saved_prediction(race_id_input)
+            if saved:
+                st.info("🌐 ライブ取得ができないため、保存済みの予測を表示します（DBより）。")
+                st.subheader(f"🎯 保存済み予測: {saved['race_name'] or race_id_input}")
+                picks = [p for p in [saved.get(f"trifecta_{i}") for i in range(1, 6)] if p]
+                st.markdown(
+                    "<div style='font-family:monospace;font-size:1.8rem;font-weight:700;line-height:1.6;'>"
+                    + "<br/>".join(picks) + "</div>", unsafe_allow_html=True)
+                st.caption(f"馬券種/モデル: {saved.get('model_version','')}  /  自信度: {saved.get('confidence') or 0:.2f}")
+                if saved.get("rationale"):
+                    with st.expander("根拠を見る"):
+                        st.write(saved["rationale"])
+                st.stop()
             st.error(
                 f"❌ 出馬表/レース結果が取得できません ({race_id_input})\n\n"
                 "考えられる原因:\n"
                 "- 未開催のレース (出馬表が金曜まで公開されない)\n"
-                "- 海外レース or 地方競馬の特殊コース\n"
+                "- netkeibaアクセス制限 (Streamlit Cloud環境で起きやすい)\n"
                 "- race_id の入力ミス (12桁の数字)\n\n"
-                "**「📅 今日の予測」タブ または 「📊 DBレース閲覧」タブから既存レースを選ぶのも便利です。**"
+                "**「📅 今日の予測」タブから保存済み予測を見るのが確実です。**"
             )
             st.stop()
         st.success(f"✓ 取得成功: {meta.race_name or race_id_input} ({len(data.results)}頭)")
